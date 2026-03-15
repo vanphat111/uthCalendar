@@ -53,6 +53,7 @@ def initDb():
                     chat_id TEXT PRIMARY KEY, 
                     uth_user TEXT NOT NULL, 
                     uth_pass TEXT NOT NULL, 
+                    notify_enabled BOOLEAN DEFAULT TRUE, 
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -83,13 +84,6 @@ def getClassesByDate(user, password, targetDate):
         return [c for c in res.json().get("body", []) if c.get("thu") == thu]
     except: return None
 
-def mainMenu(chatId):
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add("📅 Lịch hôm nay", "⏭️ Lịch ngày mai")
-    markup.add("🔑 Đăng ký tài khoản", "🔍 Check ngày khác")
-    markup.add("📩 Góp ý/Báo lỗi")
-    if str(chatId) == adminId: markup.add("📊 Admin Stats")
-    return markup
 
 def setBotCommands():
     try:
@@ -208,7 +202,7 @@ def autoCheckAndNotify():
     try:
         conn = getDbConn()
         cur = conn.cursor()
-        cur.execute("SELECT chat_id FROM users")
+        cur.execute("SELECT chat_id FROM users WHERE notify_enabled = TRUE")
         rows = cur.fetchall()
         cur.close()
         conn.close()
@@ -279,24 +273,131 @@ def broadcastToAllUsers(content):
         except: pass
     return count
 
+# NOTE: menuHandler func
+
+def handleTodayCalendar(message):
+    log("QUERY", f"User {message.chat.id} xem lịch hôm nay")
+    today = datetime.now().strftime("%Y-%m-%d")
+    processManual(message.chat.id, today)
+
+def handleTomorrowCalendar(message):
+    log("QUERY", f"User {message.chat.id} xem lịch ngày mai")
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    processManual(message.chat.id, tomorrow)
+
+def handleCustomCalendarRequest(message):
+    log("ACTION", f"User {message.chat.id} muốn check ngày tùy chọn")
+    msg = bot.send_message(
+        message.chat.id, 
+        "📅 Nhập ngày (<code>YYYY-MM-DD</code>):", 
+        parse_mode="HTML"
+    )
+    bot.register_next_step_handler(msg, lambda m: processManual(m.chat.id, m.text))
+
+def handleAdminStats(message):
+    if str(message.chat.id) != adminId: return
+    log("ADMIN", f"Admin {adminId} đang xem thống kê")
+    
+    conn = getDbConn(); cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM users")
+    count = cur.fetchone()[0]
+    cur.close(); conn.close()
+    
+    bot.send_message(
+        message.chat.id, 
+        f"📊 Tổng số người dùng: <b>{count}</b>", 
+        parse_mode="HTML"
+    )
+
+# NOTE: Setting menu func
+
+def handleSettingsRequest(message):
+    log("ACTION", f"User {message.chat.id} mở Cài đặt")
+    bot.send_message(
+        message.chat.id, 
+        "⚙️ <b>TRÌNH CÀI ĐẶT</b>\nMày có thể tùy chỉnh thông báo tại đây:", 
+        parse_mode="HTML", 
+        reply_markup=settingsMenu(message.chat.id)
+    )
+
+def handleToggleNotify(message):
+    chatId = str(message.chat.id)
+    conn = getDbConn(); cur = conn.cursor()
+    cur.execute("SELECT notify_enabled FROM users WHERE chat_id = %s", (chatId,))
+    current_status = cur.fetchone()[0]
+    
+    new_status = not current_status
+    cur.execute("UPDATE users SET notify_enabled = %s WHERE chat_id = %s", (new_status, chatId))
+    conn.commit(); cur.close(); conn.close()
+    
+    action = "BẬT" if new_status else "TẮT"
+    log("ACTION", f"User {chatId} đã {action} nhắc lịch")
+    
+    bot.send_message(
+        message.chat.id, 
+        f"✅ Đã <b>{action}</b> nhắc lịch tự động!", 
+        parse_mode="HTML", 
+        reply_markup=settingsMenu(message.chat.id)
+    )
+
+def handleBackToMain(message):
+    bot.send_message(
+        message.chat.id, 
+        "🔙 Đã quay lại Menu chính.", 
+        reply_markup=mainMenu(message.chat.id)
+    )
+
+# NOTE:Menu duoi ban phim
+def mainMenu(chatId):
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add("📅 Lịch hôm nay", "⏭️ Lịch ngày mai")
+    markup.add("🔑 Đăng ký tài khoản", "🔍 Check ngày khác")
+    markup.add("📩 Góp ý/Báo lỗi", "⚙️ Cài đặt")
+    if str(chatId) == adminId: markup.add("📊 Admin Stats")
+    return markup
+
+# Setting menu
+def settingsMenu(chatId):
+    conn = getDbConn(); cur = conn.cursor()
+    cur.execute("SELECT notify_enabled FROM users WHERE chat_id = %s", (str(chatId),))
+    res = cur.fetchone()
+    cur.close(); conn.close()
+    
+    status = res[0] if res else True
+    toggleText = "🔕 Tắt nhắc lịch" if status else "🔔 Bật nhắc lịch"
+    
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add(toggleText)
+    markup.add("🔙 Quay lại menu chính")
+    return markup
+
 @bot.message_handler(func=lambda m: True)
 def menuHandler(message):
-    if message.text == "📅 Lịch hôm nay":
-        log("QUERY", f"User {message.chat.id} xem lịch hôm nay")
-        processManual(message.chat.id, datetime.now().strftime("%Y-%m-%d"))
-    elif message.text == "⏭️ Lịch ngày mai":
-        log("QUERY", f"User {message.chat.id} xem lịch ngày mai")
-        processManual(message.chat.id, (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"))
-    elif message.text == "🔍 Check ngày khác":
-        log("ACTION", f"User {message.chat.id} muốn check ngày tùy chọn")
-        msg = bot.send_message(message.chat.id, "📅 Nhập ngày (<code>YYYY-MM-DD</code>):", parse_mode="HTML")
-        bot.register_next_step_handler(msg, lambda m: processManual(m.chat.id, m.text))
-    elif str(message.chat.id) == adminId and message.text == "📊 Admin Stats":
-        log("ADMIN", f"Admin {adminId} đang xem thống kê")
-        conn = getDbConn(); cur = conn.cursor(); cur.execute("SELECT COUNT(*) FROM users")
-        count = cur.fetchone()[0]
-        bot.send_message(message.chat.id, f"📊 Tổng số người dùng: <b>{count}</b>", parse_mode="HTML")
-        cur.close(); conn.close()
+    text = message.text
+    chatId = message.chat.id
+
+    # Chuc nang chinh
+    if text == "📅 Lịch hôm nay":
+        handleTodayCalendar(message)
+    elif text == "⏭️ Lịch ngày mai":
+        handleTomorrowCalendar(message)
+    elif text == "🔍 Check ngày khác":
+        handleCustomCalendarRequest(message)
+    elif text == "📩 Góp ý/Báo lỗi":
+        handleFeedbackRequest(message)
+    
+    # Setting menu
+    elif text == "⚙️ Cài đặt":
+        handleSettingsRequest(message)
+    elif text in ["🔕 Tắt nhắc lịch", "🔔 Bật nhắc lịch"]:
+        handleToggleNotify(message)
+    elif text == "🔙 Quay lại menu chính":
+        handleBackToMain(message)
+    
+    # Admin Zone
+    elif text == "📊 Admin Stats" and str(chatId) == adminId:
+        handleAdminStats(message)
+
 
 if __name__ == "__main__":
     initDb()
