@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: uth_bot_db
+    restart: always
+    environment:
+      POSTGRES_USER: <admin>
+      POSTGRES_PASSWORD: <your_strong_password>
+      POSTGRES_DB: uth_bot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  bot:
+    build: .
+    container_name: uth_tele_bot
+    restart: always
+    depends_on:
+      - db
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - TELE_TOKEN= <teleToken>
+      - ADMIN_ID= <adminChatID>
+      - DB_HOST=db
+      - DB_NAME=uth_bot
+      - DB_USER= <admin>
+      - DB_PASS= <your_strong_password>
+
+volumes:
+  postgres_data:
