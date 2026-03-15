@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
-# --- CONFIG TỪ DOCKER ENV ---
+
 dbConfig = {
     "host": os.getenv("DB_HOST", "127.0.0.1"),
     "database": os.getenv("DB_NAME"),
@@ -23,11 +23,9 @@ dbConfig = {
 teleToken = os.getenv("TELE_TOKEN")
 adminId = os.getenv("ADMIN_ID")
 
-# --- LOGGING ---
 def getNow(): return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def log(level, message): print(f"[{getNow()}] [{level}] {message}", flush=True)
 
-# --- RESILIENCE CONFIG ---
 apihelper.CONNECT_TIMEOUT = 60
 apihelper.READ_TIMEOUT = 60
 
@@ -42,7 +40,6 @@ apihelper.CUSTOM_REQUEST_SENDER = lambda method, url, **kwargs: createRetrySessi
 
 bot = telebot.TeleBot(teleToken)
 
-# --- DATABASE LOGIC ---
 def getDbConn(): return psycopg2.connect(**dbConfig)
 
 def initDb():
@@ -68,7 +65,6 @@ def initDb():
             time.sleep(5)
     log("CRITICAL", "Không thể khởi tạo Database sau nhiều lần thử!")
 
-# --- API TRƯỜNG ---
 def verifyUthCredentials(user, password):
     try:
         r = requests.post("https://portal.ut.edu.vn/api/v1/user/login", json={"username": user, "password": password}, timeout=15)
@@ -87,7 +83,6 @@ def getClassesByDate(user, password, targetDate):
         return [c for c in res.json().get("body", []) if c.get("thu") == thu]
     except: return None
 
-# NOTE: main menu
 def mainMenu(chatId):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add("📅 Lịch hôm nay", "⏭️ Lịch ngày mai")
@@ -96,9 +91,7 @@ def mainMenu(chatId):
     if str(chatId) == adminId: markup.add("📊 Admin Stats")
     return markup
 
-# NOTE: goi y lenh
 def setBotCommands():
-    """Thiết lập danh sách lệnh hiển thị trong menu 'Menu' của Telegram."""
     try:
         commands = [
             types.BotCommand("start", "🏠 Khởi động và hiện Menu chính"),
@@ -111,17 +104,14 @@ def setBotCommands():
     except Exception as e:
         log("ERROR", f"Không thể thiết lập Bot Commands: {e}")
 
-# --- HANDLERS ---
-
-# start msg
 @bot.message_handler(commands=['start', 'help'])
 def welcome(message):
     log("INFO", f"User {message.chat.id} vừa nhấn {message.text}")
     
     welcomeText = (
-        "👋 **Chào bạn! Mình là Bot nhắc lịch UTH.**\n\n"
+        "👋 <b>Chào bạn! Mình là Bot nhắc lịch UTH.</b>\n\n"
         "Mình sẽ giúp bạn theo dõi lịch học và lấy link phòng học Online một cách nhanh chóng nhất.\n\n"
-        "📢 **Tham gia nhóm hỗ trợ và cập nhật tin tức tại:**\n"
+        "📢 <b>Tham gia nhóm hỗ trợ và cập nhật tin tức tại:</b>\n"
         "👉 https://t.me/UTH_Calendar\n\n"
         "Bạn hãy chọn các nút ở menu bên dưới để bắt đầu sử dụng nhé!"
     )
@@ -129,17 +119,16 @@ def welcome(message):
     bot.reply_to(
         message, 
         welcomeText, 
-        parse_mode="Markdown", 
+        parse_mode="HTML", 
         reply_markup=mainMenu(message.chat.id),
         disable_web_page_preview=False
     )
 
-# login
 @bot.message_handler(commands=['login'])
 @bot.message_handler(func=lambda m: m.text == "🔑 Đăng ký tài khoản")
 def startLogin(message):
     log("ACTION", f"User {message.chat.id} bắt đầu quy trình đăng ký")
-    msg = bot.send_message(message.chat.id, "🔹 Bước 1: Bạn vui lòng nhập **MSSV** của mình nhé:", parse_mode="Markdown")
+    msg = bot.send_message(message.chat.id, "🔹 Bước 1: Bạn vui lòng nhập <b>MSSV</b> của mình nhé:", parse_mode="HTML")
     bot.register_next_step_handler(msg, processMssvStep)
 
 def processMssvStep(message):
@@ -149,7 +138,7 @@ def processMssvStep(message):
         bot.reply_to(message, "MSSV không hợp lệ, bạn vui lòng thử lại nha.")
         return
     log("INFO", f"User {message.chat.id} nhập MSSV: {mssv}")
-    msg = bot.send_message(message.chat.id, f"✅ Nhận MSSV: `{mssv}`\n🔹 Bước 2: Bạn nhập **Mật khẩu UTH** nhé:", parse_mode="Markdown")
+    msg = bot.send_message(message.chat.id, f"✅ Nhận MSSV: <code>{mssv}</code>\n🔹 Bước 2: Bạn nhập <b>Mật khẩu UTH</b> nhé:", parse_mode="HTML")
     bot.register_next_step_handler(msg, processPasswordStep, {'mssv': mssv})
 
 def processPasswordStep(message, userData):
@@ -162,13 +151,11 @@ def processPasswordStep(message, userData):
         cur.execute("INSERT INTO users (chat_id, uth_user, uth_pass) VALUES (%s, %s, %s) ON CONFLICT (chat_id) DO UPDATE SET uth_user = EXCLUDED.uth_user, uth_pass = EXCLUDED.uth_pass", (str(message.chat.id), userData['mssv'], pwd))
         conn.commit(); cur.close(); conn.close()
         log("SUCCESS", f"User {message.chat.id} đã đăng ký thành công")
-        bot.send_message(message.chat.id, "🎉 **Đăng ký thành công!** Mình sẽ tự động nhắc lịch cho bạn.", reply_markup=mainMenu(message.chat.id), parse_mode="Markdown")
+        bot.send_message(message.chat.id, "🎉 <b>Đăng ký thành công!</b> Mình sẽ tự động nhắc lịch cho bạn.", reply_markup=mainMenu(message.chat.id), parse_mode="HTML")
     else:
         log("ERROR", f"User {message.chat.id} đăng ký thất bại: {reason}")
         bot.send_message(message.chat.id, f"❌ Thất bại: {reason}")
 
-
-# check lich
 def processManual(chatId, dateStr, isAuto=False):
     try:
         datetime.strptime(dateStr, "%Y-%m-%d")
@@ -206,6 +193,7 @@ def processManual(chatId, dateStr, isAuto=False):
                 disable_web_page_preview=True
             )
         else:
+            if not isAuto:
                 bot.send_message(chatId, f"🎉 Ngày {dateStr} bạn được nghỉ nè!", reply_markup=mainMenu(chatId))
                 
     except Exception as e:
@@ -213,8 +201,6 @@ def processManual(chatId, dateStr, isAuto=False):
         if not isAuto:
             bot.send_message(chatId, "Định dạng ngày không đúng (YYYY-MM-DD).", reply_markup=mainMenu(chatId))
 
-
-# Check lich theo gio (5h, 12h, 17h +-30s)
 def autoCheckAndNotify():
     log("AUTO", "Bắt đầu quy trình quét lịch tự động cho tất cả user...")
     today = datetime.now().strftime("%Y-%m-%d")
@@ -247,13 +233,12 @@ def runScheduler():
         schedule.run_pending()
         time.sleep(30)
 
-# feedback
 @bot.message_handler(func=lambda m: m.text == "📩 Góp ý/Báo lỗi")
 @bot.message_handler(commands=['feedback'])
 def handleFeedbackRequest(message):
     log("ACTION", f"Người dùng {message.chat.id} chuẩn bị gửi góp ý.")
-    guideText = "😊 **Mình sẵn sàng lắng nghe!** Bạn hãy nhập nội dung góp ý hoặc báo lỗi vào đây nhé."
-    msg = bot.send_message(message.chat.id, guideText, parse_mode="Markdown")
+    guideText = "😊 <b>Mình sẵn sàng lắng nghe!</b> Bạn hãy nhập nội dung góp ý hoặc báo lỗi vào đây nhé."
+    msg = bot.send_message(message.chat.id, guideText, parse_mode="HTML")
     bot.register_next_step_handler(msg, processFeedbackContent)
 
 def processFeedbackContent(message):
@@ -263,19 +248,18 @@ def processFeedbackContent(message):
         bot.send_message(chatId, "⚠️ Nội dung hơi ngắn, bạn viết kỹ hơn xíu nha.")
         return
     log("FEEDBACK", f"Nhận góp ý từ {chatId}")
-    bot.send_message(chatId, "✅ **Gửi thành công!** Cảm ơn bạn.", reply_markup=mainMenu(chatId))
+    bot.send_message(chatId, "✅ <b>Gửi thành công!</b> Cảm ơn bạn.", reply_markup=mainMenu(chatId), parse_mode="HTML")
     if adminId:
-        bot.send_message(adminId, f"📩 **FEEDBACK MỚI**\n👤 ID: `{chatId}`\n📝 Nội dung: {feedbackText}")
+        bot.send_message(adminId, f"📩 <b>FEEDBACK MỚI</b>\n👤 ID: <code>{chatId}</code>\n📝 Nội dung: {feedbackText}", parse_mode="HTML")
 
-# admin broadcast
 @bot.message_handler(commands=['broadcast'])
 def adminBroadcastHandler(message):
     if str(message.chat.id) != str(adminId): 
-        log("WARN", "User {message.chat.id} try to use broadcast")
+        log("WARN", f"User {message.chat.id} try to use broadcast")
         return
     rawInput = message.text.split(maxsplit=1)
     if len(rawInput) < 2:
-        bot.reply_to(message, "Nhập nội dung: `/broadcast Nội dung`", parse_mode="Markdown")
+        bot.reply_to(message, "Nhập nội dung: <code>/broadcast Nội dung</code>", parse_mode="HTML")
         return
     broadcastContent = rawInput[1]
     bot.send_message(message.chat.id, "⏳ Đang gửi thông báo...")
@@ -290,12 +274,11 @@ def broadcastToAllUsers(content):
     count = 0
     for user in userList:
         try:
-            bot.send_message(user[0], f"📢 **THÔNG BÁO MỚI**\n\n{content}\n\n✨ *Chúc bạn học tốt!*", parse_mode="Markdown")
+            bot.send_message(user[0], f"📢 <b>THÔNG BÁO MỚI</b>\n\n{content}\n\n<i>Chúc bạn học tốt!</i>", parse_mode="HTML")
             count += 1; time.sleep(0.3)
         except: pass
     return count
 
-# NOTE: check menu duoi ban phim
 @bot.message_handler(func=lambda m: True)
 def menuHandler(message):
     if message.text == "📅 Lịch hôm nay":
@@ -306,19 +289,18 @@ def menuHandler(message):
         processManual(message.chat.id, (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"))
     elif message.text == "🔍 Check ngày khác":
         log("ACTION", f"User {message.chat.id} muốn check ngày tùy chọn")
-        msg = bot.send_message(message.chat.id, "📅 Nhập ngày (YYYY-MM-DD):")
+        msg = bot.send_message(message.chat.id, "📅 Nhập ngày (<code>YYYY-MM-DD</code>):", parse_mode="HTML")
         bot.register_next_step_handler(msg, lambda m: processManual(m.chat.id, m.text))
     elif str(message.chat.id) == adminId and message.text == "📊 Admin Stats":
         log("ADMIN", f"Admin {adminId} đang xem thống kê")
         conn = getDbConn(); cur = conn.cursor(); cur.execute("SELECT COUNT(*) FROM users")
         count = cur.fetchone()[0]
-        bot.send_message(message.chat.id, f"📊 Tổng số người dùng: {count}")
+        bot.send_message(message.chat.id, f"📊 Tổng số người dùng: <b>{count}</b>", parse_mode="HTML")
         cur.close(); conn.close()
 
-# --- MAIN ---
 if __name__ == "__main__":
-    initDb() # gan database
-    setBotCommands() # goi y lenh goc trai
-    threading.Thread(target=runScheduler, daemon=True).start() # daemon nhac lich
+    initDb()
+    setBotCommands()
+    threading.Thread(target=runScheduler, daemon=True).start()
     log("SYSTEM", "Bot UTH (camelCase Mode) khởi động!")
-    bot.infinity_polling(timeout=60) # bot loop
+    bot.infinity_polling(timeout=60)
