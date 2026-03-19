@@ -61,8 +61,10 @@ def registerHandlers(bot):
     def welcome(message):
         welcomeText = (
             "👋 <b>Chào bạn! Mình là Bot nhắc lịch UTH.</b>\n\n"
-            "Mình sẽ giúp bạn theo dõi lịch học và deadline từ hệ thống Courses một cách tự động.\n"
-            "Bạn hãy chọn các chức năng ở menu bên dưới để bắt đầu nhé!"
+            "Mình sẽ đồng hành cùng bạn trong việc theo dõi lịch học Portal và các deadline từ hệ thống Courses một cách tự động.\n\n"
+            "📢 <b>Tham gia nhóm hỗ trợ và nhận cập nhật mới nhất tại:</b>\n"
+            "👉 https://t.me/uth_notifier_group\n\n"
+            "Bạn hãy chọn các chức năng ở menu bên dưới để bắt đầu trải nghiệm nhé! 😊"
         )
         bot.send_message(message.chat.id, welcomeText, parse_mode="HTML", reply_markup=mainMenu(message.chat.id))
 
