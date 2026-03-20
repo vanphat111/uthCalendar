@@ -79,7 +79,7 @@ def unmarkTaskCompleted(chatId, taskId):
 def getUserCredentials(chatId):
     try:
         conn = getDbConn(); cur = conn.cursor()
-        cur.execute("SELECT uth_user, uth_pass FROM users WHERE chat_id = %s", (str(chatId),))
+        cur.execute("SELECT * FROM users WHERE chat_id = %s", (str(chatId),))
         res = cur.fetchone(); cur.close(); conn.close()
         return res
     except: return None

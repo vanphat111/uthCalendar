@@ -40,10 +40,7 @@ def verifyAndSaveUser(chatId, mssv, password):
     return False, f"❌ Thất bại: {reason}"
 
 def formatCalendarMessage(chatId, dateStr, isAuto=False):
-    conn = db.getDbConn(); cur = conn.cursor()
-    cur.execute("SELECT uth_user, uth_pass FROM users WHERE chat_id = %s", (str(chatId),))
-    u = cur.fetchone(); cur.close(); conn.close()
-    
+    u = db.getUserCredentials(chatId)
     if not u: return "Bạn chưa đăng ký tài khoản!"
     
     rawUser = utils.decryptData(u[0])
@@ -63,14 +60,6 @@ def formatCalendarMessage(chatId, dateStr, isAuto=False):
     else:
         if not isAuto:
             return f"🎉 Ngày {dateStr} bạn được nghỉ nè!"
-
-def getUserData(chatId):
-    try:
-        conn = db.getDbConn(); cur = conn.cursor()
-        cur.execute("SELECT uth_user, uth_pass, notify_enabled FROM users WHERE chat_id = %s", (str(chatId),))
-        res = cur.fetchone(); cur.close(); conn.close()
-        return res
-    except: return None
 
 def updateNotifyStatus(chatId, newStatus):
     try:

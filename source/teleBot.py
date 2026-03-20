@@ -8,6 +8,7 @@ import teleFunc
 import courseService
 from datetime import datetime, timedelta
 import database as db
+import cronService
 
 adminId = utils.os.getenv("ADMIN_ID")
 
@@ -20,8 +21,9 @@ def mainMenu(chatId):
     markup.add("🏛️ Portal Menu", "📚 Course Menu") 
     markup.add("🔑 Đăng ký", "📩 Góp ý/Báo lỗi")
     markup.add("🛠️ Kiểm tra hệ thống")
-    if str(chatId) == adminId: 
-        markup.add("📊 Admin Stats")
+    if str(chatId) == str(adminId):
+        btn_admin = types.KeyboardButton("⚙️ Admin Panel")
+        markup.add(btn_admin)
     return markup
 
 def portalSubMenu():
@@ -37,6 +39,15 @@ def courseSubMenu():
     markup.add("📢 Bật tắt thông báo hằng tuần")
     markup.add("📑 Quét deadline")
     markup.add("🏠 Quay lại menu chính")
+    return markup
+
+def adminSubMenu():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("🔄 Test Quét Lịch (Portal)", callback_data="test_cron_portal"),
+        types.InlineKeyboardButton("📅 Test Quét Deadline (Course)", callback_data="test_cron_deadline"),
+        types.InlineKeyboardButton("📊 Thống kê DB", callback_data="admin_db_stats")
+    )
     return markup
 
 # ==========================================
@@ -154,6 +165,22 @@ def registerHandlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data.startswith('undone_'))
     def onMarkUndone(call):
         handleMarkUndone(bot, call)
+
+    @bot.message_handler(func=lambda m: m.text == "⚙️ Admin Panel")
+    def handle_admin_panel(message):
+        if str(message.chat.id) == str(adminId):
+            bot.send_message(message.chat.id, "🛠 **ADMIN CONTROL PANEL**\nMày muốn test lập lịch nào?", 
+                            reply_markup=adminSubMenu(), parse_mode="Markdown")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('test_cron_'))
+    def handle_test_cron(call):
+        import threading
+        if call.data == "test_cron_portal":
+            bot.answer_callback_query(call.id, "🚀 Đang chạy quét lịch...")
+            threading.Thread(target=cronService.autoCheckAndNotify, args=(bot,)).start()
+        elif call.data == "test_cron_deadline":
+            bot.answer_callback_query(call.id, "🚀 Đang chạy quét deadline...")
+            threading.Thread(target=cronService.autoScanAllUsers, args=(bot,)).start()
 
     # --- NHẮC LỆNH SAI ---
     @bot.message_handler(func=lambda m: True)

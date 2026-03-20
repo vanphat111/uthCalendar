@@ -57,9 +57,9 @@ def broadcastToAllUsers(bot, content):
     return count
 
 def handleToggleNotify(chatId):
-    u = portalService.getUserData(chatId)
+    u = db.getUserCredentials(chatId)
     if not u: return None, "❌ Bạn chưa đăng ký tài khoản."
-    newStatus = not u[2]
+    newStatus = not u[4]
     portalService.updateNotifyStatus(chatId, newStatus)
     return newStatus, f"✅ Đã <b>{'BẬT' if newStatus else 'TẮT'}</b> nhắc lịch tự động!"
 
@@ -74,7 +74,7 @@ def getAdminStats(adminId):
     except: return "⚠️ Không thể lấy thống kê."
 
 def handleToggleDeadlineNotify(chatId):
-    u = portalService.getUserData(chatId)
+    u = db.getUserCredentials(chatId)
     if not u: return None, "❌ Bạn chưa đăng ký tài khoản."
 
     currentStatus = db.getDeadlineStatus(chatId)

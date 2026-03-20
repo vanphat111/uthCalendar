@@ -26,28 +26,60 @@ def fetchMoodleSession(username, password):
         utils.log("ERROR", f"Lỗi login Moodle: {e}")
         return None, None
 
+from datetime import datetime
+
 def getEventsViaAjax(session, sesskey):
     url = f"https://courses.ut.edu.vn/lib/ajax/service.php?sesskey={sesskey}"
-    now = int(time.time())
+    now_dt = datetime.now()
+    now_ts = int(time.time())
+    
+    # Mốc chặn: 7 ngày sau (7 ngày * 24h * 3600s)
+    seven_days_later = now_ts + (7 * 24 * 60 * 60)
+    
     payload = [{
         "index": 0,
-        "methodname": "core_calendar_get_action_events_by_timesort",
+        "methodname": "core_calendar_get_calendar_monthly_view",
         "args": {
-            "limitnum": 20,
-            "timesortfrom": now,
-            "timesortto": now + (7 * 24 * 60 * 60)
+            "year": str(now_dt.year),
+            "month": str(now_dt.month),
+            "courseid": 1,
+            "day": 1,
+            "view": "month"
         }
     }]
+    
     try:
         r = session.post(url, json=payload, timeout=15)
-        return r.json()[0]['data']['events']
-    except: return []
+        res = r.json()[0]
+        if res.get('error'): return []
+
+        weeks = res['data']['weeks']
+        all_events = []
+        
+        for week in weeks:
+            for day in week['days']:
+                if day['events']:
+                    for event in day['events']:
+                        # CHỐT CHẶN: Chỉ lấy từ Bây giờ đến 7 ngày sau
+                        if now_ts <= event['timesort'] <= seven_days_later:
+                            all_events.append(event)
+        
+        all_events.sort(key=lambda x: x['timesort'])
+        return all_events
+
+    except Exception as e:
+        utils.log("ERROR", f"Lỗi lọc Monthly Events 7 ngày: {e}")
+        return []
+
+    except Exception as e:
+        utils.log("ERROR", f"Lỗi lấy Monthly Events: {e}")
+        return []
 
 def scanAllDeadlines(bot, chatId, isManual=False):
     u = db.getUserCredentials(chatId)
     if not u: return False
 
-    rawUser = utils.decryptData(u[0]); rawPass = utils.decryptData(u[1])
+    rawUser = utils.decryptData(u[1]); rawPass = utils.decryptData(u[2])
     session, sesskey = fetchMoodleSession(rawUser, rawPass)
     
     if not session or not sesskey:

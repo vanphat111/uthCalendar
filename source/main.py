@@ -1,66 +1,31 @@
 # Copyright (c) 2026 vanphat111 <phathovan14122006@email.com> | All rights reserved
 # main.py
 
-import telebot
-import os
-import threading
-import schedule
-import time
-from database import initDb
-import teleBot
-import portalService
-import courseService
-import database as db
+import telebot, os, threading, schedule, time
+import teleBot, cronService, database as db
 from utils import log
 
-
-teleToken = os.getenv("TELE_TOKEN")
-bot = telebot.TeleBot(teleToken)
-
-def autoCheckAndNotify():
-    log("AUTO", "Bắt đầu quét lịch tự động...")
-    today = time.strftime("%Y-%m-%d")
-    try:
-        conn = db.getDbConn(); cur = conn.cursor()
-        cur.execute("SELECT chat_id FROM users WHERE notify_enabled = TRUE")
-        rows = cur.fetchall(); cur.close(); conn.close()
-        for r in rows:
-            msg = portalService.formatCalendarMessage(r[0], today, isAuto=True)
-            bot.send_message(r[0], msg, parse_mode="HTML", disable_web_page_preview=True)
-            time.sleep(0.3)
-    except Exception as e: log("ERROR", f"Lỗi autoNotify: {e}")
-
-def autoScanAllUsers():
-    log("AUTO", "Bắt đầu quét deadline tuần mới...")
-    try:
-        conn = db.getDbConn(); cur = conn.cursor()
-        cur.execute("SELECT chat_id FROM users WHERE notify_deadline = TRUE")
-        users = cur.fetchall(); cur.close(); conn.close()
-        for u in users:
-            courseService.scanAllDeadlines(bot, u[0], isManual=False)
-            time.sleep(1) # Delay để tránh bị trường chặn IP
-    except Exception as e: log("ERROR", f"Lỗi autoScan: {e}")
+bot = telebot.TeleBot(os.getenv("TELE_TOKEN"))
+adminId = os.getenv("ADMIN_ID")
 
 def runScheduler():
-    schedule.every().day.at("05:00").do(autoCheckAndNotify)
-    schedule.every().day.at("12:00").do(autoCheckAndNotify)
-    schedule.every().day.at("17:00").do(autoCheckAndNotify)
-    schedule.every().monday.at("21:00").do(autoScanAllUsers)
+    schedule.every().day.at("05:00").do(cronService.autoCheckAndNotify, bot)
+    schedule.every().day.at("12:00").do(cronService.autoCheckAndNotify, bot)
+    schedule.every().day.at("17:00").do(cronService.autoCheckAndNotify, bot)
+    schedule.every().monday.at("21:00").do(cronService.autoScanAllUsers, bot)
     while True:
         schedule.run_pending()
         time.sleep(30)
 
 if __name__ == "__main__":
-    initDb()
-    teleBot.setBotCommands(bot)
+    db.initDb()
     teleBot.registerHandlers(bot)
     threading.Thread(target=runScheduler, daemon=True).start()
-    log("SYSTEM", "Bot UTH (camelCase) khởi động!")
-
+    log("SYSTEM", "Bot UTH v2.0 (Cron-Separated) đã sẵn sàng!")
+    
     while True:
-            try:
-                bot.polling(non_stop=True, timeout=60, long_polling_timeout=60)
-            except Exception as e:
-                log("ERROR", f"Lỗi kết nối: {e}. Đang đợi 5s để hồi sinh...")
-                time.sleep(5)
-                log("SYSTEM", "Đang thử kết nối lại...")
+        try:
+            bot.polling(non_stop=True, timeout=20)
+        except Exception as e:
+            log("ERROR", f"Polling Error: {e}")
+            time.sleep(5)
