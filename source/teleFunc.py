@@ -5,42 +5,72 @@ import database as db
 import portalService
 import utils
 import time
+import redisManager
+import courseService
 
 def getSystemStatus(bot, chatId, msgWaitId):
     u = db.getUserCredentials(chatId)
     if not u:
-        bot.edit_message_text("❌ Hình như bạn chưa đăng ký tài khoản. Hãy đăng ký để mình hỗ trợ tốt hơn nhé!", chatId, msgWaitId)
+        bot.edit_message_text("❌ Bạn chưa đăng ký tài khoản.", chatId, msgWaitId)
         return
 
     try:
-        # Gọi tên cột, không đếm số nữa
+        # --- 1. ĐO PING TELEGRAM (NETWORK LATENCY) ---
+        start_tg = time.time()
+        bot.get_me() # Gọi nhẹ tới Telegram API
+        tg_lat = round((time.time() - start_tg) * 1000)
+
+        # --- 2. XÁC THỰC TÀI KHOẢN ---
         rawUser = utils.decryptData(u['uth_user'])
         rawPass = utils.decryptData(u['uth_pass'])
 
-        startTime = time.time()
-        isValid, reason = portalService.verifyUthCredentials(rawUser, rawPass)
-        latency = round((time.time() - startTime) * 1000)
+        # Check Portal & Moodle
+        start_pt = time.time()
+        portal_ok, portal_msg = portalService.verifyUthCredentials(rawUser, rawPass)
+        pt_lat = round((time.time() - start_pt) * 1000)
+        md_session, md_sesskey = courseService.fetchMoodleSession(rawUser, rawPass)
+        moodle_ok = True if md_sesskey else False
 
-        apiStatus = "✅ Hoạt động tốt" if isValid else f"❌ Có lỗi ({reason})"
-        credStatus = "✅ Chính xác" if isValid else "❌ Mật khẩu chưa đúng"
-        notifyStatus = "🔔 Đang bật" if u['notify_enabled'] else "🔕 Đang tắt"
-        
-        statusMsg = (
-            "<b>📊 TRẠNG THÁI HỆ THỐNG CỦA BẠN</b>\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            f"🌐 <b>Kết nối Portal:</b> {apiStatus}\n"
-            f"🔑 <b>Tài khoản UTH:</b> {credStatus}\n"
-            f"📢 <b>Nhắc lịch tự động:</b> {notifyStatus}\n"
-            f"⚡ <b>Độ trễ hệ thống:</b> <code>{latency}ms</code>\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            "<i>Nếu thông tin chưa chính xác, bạn hãy chọn 'Đăng ký' để cập nhật mật khẩu mới nha!</i>"
+        # --- 3. KIỂM TRA HẠ TẦNG & ĐỘ TRỄ ---
+        # Database
+        start_db = time.time()
+        db_conn = db.getDbConn()
+        db_ok = "🟢" if db_conn else "🔴"
+        db_lat = round((time.time() - start_db) * 1000)
+        if db_conn: db_conn.close()
+
+        # Redis
+        start_rd = time.time()
+        rd_ok = "🟢" if redisManager.redisClient.ping() else "🔴"
+        rd_lat = round((time.time() - start_rd) * 1000)
+
+        # --- 4. FORMAT DASHBOARD ---
+        status_msg = (
+            f"📊 <b>HỆ THỐNG MONITORING</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🔐 <b>XÁC THỰC TÀI KHOẢN:</b>\n"
+            f"  ├ Portal UTH: {'✅ Hợp lệ' if portal_ok else f'❌ Sai Pass ({portal_msg})'}\n"
+            f"  └ Courses UTH: {'✅ Hợp lệ' if moodle_ok else '❌ Không thể Login'}\n\n"
+            f"⚡ <b>ĐỘ TRỄ MẠNG (PING):</b>\n"
+            f"  ├ Telegram API: <code>{tg_lat}ms</code>\n"
+            f"  ├ Portal Server: <code>{pt_lat if portal_ok else 'ERR'}ms</code>\n"
+            f"  ├ Database Local: <code>{db_lat}ms</code>\n"
+            f"  └ Redis Local: <code>{rd_lat}ms</code>\n\n"
+            f"🏗️ <b>HẠ TẦNG (SERVER):</b>\n"
+            f"  ├ PostgreSQL: {db_ok}\n"
+            f"  └ Redis Cache: {rd_ok}\n\n"
+            f"📢 <b>THÔNG BÁO:</b>\n"
+            f"  ├ Nhắc lịch: {'🔔 Bật' if u['notify_enabled'] else '🔕 Tắt'}\n"
+            f"  └ Deadline: {'🔔 Bật' if u['notify_deadline'] else '🔕 Tắt'}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🕒 <i>Cập nhật: {time.strftime('%H:%M:%S')}</i>"
         )
-        
-        bot.edit_message_text(statusMsg, chatId, msgWaitId, parse_mode="HTML")
+
+        bot.edit_message_text(status_msg, chatId, msgWaitId, parse_mode="HTML")
 
     except Exception as e:
-        utils.log("ERROR", f"Lỗi check status: {e}")
-        bot.edit_message_text("⚠️ Có chút trục trặc nhỏ, mình chưa kiểm tra được. Bạn thử lại sau nhé!", chatId, msgWaitId)
+        utils.log("ERROR", f"Lỗi Dashboard: {e}")
+        bot.edit_message_text("⚠️ Có chút trục trặc", chatId, msgWaitId)
 
 def broadcastToAllUsers(bot, content):
     try:
