@@ -12,7 +12,7 @@ def runScheduler():
     schedule.every().day.at("05:00").do(cronService.autoCheckAndNotify, bot)
     schedule.every().day.at("12:00").do(cronService.autoCheckAndNotify, bot)
     schedule.every().day.at("17:00").do(cronService.autoCheckAndNotify, bot)
-    schedule.every().monday.at("21:00").do(cronService.autoScanAllUsers, bot)
+    schedule.every().monday.at("19:00").do(cronService.autoScanAllUsers, bot)
     while True:
         schedule.run_pending()
         time.sleep(30)
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     db.initDb()
     teleBot.registerHandlers(bot)
     threading.Thread(target=runScheduler, daemon=True).start()
-    log("SYSTEM", "Bot UTH v2.0 (Cron-Separated) đã sẵn sàng!")
+    log("SYSTEM", "Bot UTH v2.1.2 (Multi-Task & Dict-based) đã sẵn sàng!")
     
     while True:
         try:

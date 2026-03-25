@@ -26,26 +26,23 @@ def sendWorkerCheckIn(_self, _chatId):
 # 1. TASK ƯU TIÊN CAO (Dành cho User gọi lệnh)
 # ==========================================
 
-@app.task(
-    bind=True,
-    name='tasks.instantTask', 
-    queue='high_priority'
-)
-def instantTask(self, chatId, taskType, data=None):
+@app.task(bind=True, name='tasks.portalTask', queue='high_priority')
+def portalTask(self, chatId, dateStr):
     sendWorkerCheckIn(self, chatId)
-
     try:
-        if taskType == 'todayPortal':
-            today = time.strftime("%Y-%m-%d")
-            msg = portalService.formatCalendarMessage(chatId, today)
-            if msg:
-                bot.send_message(chatId, msg, parse_mode="HTML", disable_web_page_preview=True)
-                
-        elif taskType == 'manualDeadline':
-            courseService.scanAllDeadlines(bot, chatId, isManual=True)
-            
+        msg = portalService.formatCalendarMessage(chatId, dateStr)
+        if msg:
+            bot.send_message(chatId, msg, parse_mode="HTML", disable_web_page_preview=True)
     except Exception as e:
-        log("ERROR", f"Lỗi Instant Task ({taskType}) cho {chatId}: {e}")
+        log("ERROR", f"Lỗi Portal Task cho {chatId}: {e}")
+
+@app.task(bind=True, name='tasks.deadlineTask', queue='high_priority')
+def deadlineTask(self, chatId):
+    sendWorkerCheckIn(self, chatId)
+    try:
+        courseService.scanAllDeadlines(bot, chatId, isManual=True)
+    except Exception as e:
+        log("ERROR", f"Lỗi Deadline Task cho {chatId}: {e}")
 
 @app.task(bind=True, name='tasks.registrationTask')
 def registrationTask(self, chatId, mssv, password):

@@ -108,16 +108,19 @@ def registerHandlers(bot):
     @bot.message_handler(func=lambda m: m.text == "📅 Lịch hôm nay")
     def handleToday(message):
         bot.send_message(message.chat.id, "⏳ Đang điều phối Worker để quét lịch cho bạn...")
-        task.instantTask.apply_async(args=[message.chat.id, 'todayPortal'], queue='high_priority')
+        today = datetime.now().strftime("%Y-%m-%d")
+        task.portalTask.delay(message.chat.id, today)
 
     @bot.message_handler(func=lambda m: m.text == "⏭️ Lịch ngày mai")
     def handleTomorrow(message):
+        bot.send_message(message.chat.id, "⏳ Đang điều phối Worker để quét lịch ngày mai cho bạn...")
         tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-        bot.send_message(message.chat.id, portalService.formatCalendarMessage(message.chat.id, tomorrow), parse_mode="HTML", disable_web_page_preview=True)
+        task.portalTask.delay(message.chat.id, tomorrow)
 
     @bot.message_handler(func=lambda m: m.text == "📆 Lịch ngày tùy chọn")
     def handleCustomDateRequest(message):
         msg = bot.send_message(message.chat.id, "📅 Bạn vui lòng nhập ngày muốn xem (Định dạng: <code>YYYY-MM-DD</code>):", parse_mode="HTML")
+        utils.startStepTimeout(bot, message.chat.id) 
         bot.register_next_step_handler(msg, processCustomDate, bot)
 
     @bot.message_handler(func=lambda m: m.text == "🔔 Bật tắt thông báo lịch")
@@ -129,7 +132,7 @@ def registerHandlers(bot):
     @bot.message_handler(func=lambda m: m.text == "📑 Quét deadline")
     def handleDeadlineScan(message):
         bot.send_message(message.chat.id, "🔍 Đang điều phối Worker kiểm tra Deadline giúp bạn...")
-        task.instantTask.apply_async(args=[message.chat.id, 'manualDeadline'], queue='high_priority')
+        task.deadlineTask.delay(message.chat.id)
 
     @bot.message_handler(func=lambda m: m.text == "📢 Bật tắt thông báo hằng tuần")
     def handleToggleCourse(message):
@@ -207,11 +210,14 @@ def processPasswordStep(message, bot, mssv):
     task.registrationTask.delay(message.chat.id, mssv, pwd)
 
 def processCustomDate(message, bot):
+    utils.cancelStepTimeout(message.chat.id) 
+    
     try:
         dateStr = message.text
         datetime.strptime(dateStr, "%Y-%m-%d")
-        bot.send_message(message.chat.id, portalService.formatCalendarMessage(message.chat.id, dateStr), parse_mode="HTML", disable_web_page_preview=True)
-    except:
+        bot.send_message(message.chat.id, f"⏳ Đang điều phối Worker để quét lịch ngày {dateStr} cho bạn...")
+        task.portalTask.delay(message.chat.id, dateStr)
+    except Exception as e:
         bot.send_message(message.chat.id, "❌ Định dạng ngày chưa đúng (Bạn hãy nhập YYYY-MM-DD, ví dụ: 2026-03-20).")
 
 def processFeedback(message, bot):

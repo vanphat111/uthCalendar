@@ -13,7 +13,8 @@ app.conf.update(
     timezone='Asia/Ho_Chi_Minh',
     enable_utc=True,
     task_routes={
-        'tasks.instantTask': {'queue': 'high_priority'},
+        'tasks.portalTask': {'queue': 'high_priority'},
+        'tasks.deadlineTask': {'queue': 'high_priority'},
         'tasks.registrationTask': {'queue': 'high_priority'},
         'tasks.systemStatusTask': {'queue': 'high_priority'},
         

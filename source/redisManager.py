@@ -4,7 +4,7 @@
 import redis
 import json
 import os
-import utils as log
+from utils import log
 
 redisClient = redis.Redis(
     host=os.getenv('REDIS_HOST', 'uth_redis'), 
