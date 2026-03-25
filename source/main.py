@@ -21,7 +21,7 @@ if __name__ == "__main__":
     db.initDb()
     teleBot.registerHandlers(bot)
     threading.Thread(target=runScheduler, daemon=True).start()
-    log("SYSTEM", "Bot UTH v2.1.2 (Multi-Task & Dict-based) đã sẵn sàng!")
+    log("SYSTEM", "Bot UTH v2.1.3 (Multi-Task & Dict-based) đã sẵn sàng!")
     
     while True:
         try:

@@ -33,14 +33,21 @@ def getClassesByDate(chatId, user, password, targetDate):
         
         res = requests.get(f"https://portal.ut.edu.vn/api/v1/lichhoc/lichTuan?date={targetDate}", headers=headers, timeout=20)
         
-        if res.status_code != 200:
-            return None
+        if res.status_code == 401:
+            utils.log("WARN", f"Token của {chatId} bị Invalid. Đang login lại")
+            tk = redisManager.loginAndSaveToken(chatId, user, password) 
+            
+            if not tk: return None
+        
+        headers["authorization"] = f"Bearer {tk}"
+        res = requests.get(f"https://portal.ut.edu.vn/api/v1/lichhoc/lichTuan?date={targetDate}", headers=headers)
             
         body = res.json().get("body", [])
         
         # 3. Logic lọc mới: Đừng tin thằng 'thu', hãy tin thằng 'ngayBatDauHoc'
         # Vì Portal giờ trả ngayBatDauHoc khớp với ngày thực tế của buổi học đó luôn
-        return [c for c in body if c.get("ngayBatDauHoc") == searchDate]
+        if res.status_code == 200:
+            return [c for c in body if c.get("ngayBatDauHoc") == searchDate]
         
     except Exception as e:
         print(f"Lỗi quét lịch: {e}")
