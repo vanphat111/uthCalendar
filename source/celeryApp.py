@@ -2,6 +2,7 @@
 # celery.py
 
 from celery import Celery
+from celery.schedules import crontab
 import os
 
 REDIS_URL = os.getenv('CELERY_BROKER_URL', 'redis://uth_redis:6379/0')
@@ -22,3 +23,10 @@ app.conf.update(
         'tasks.periodicCourseTask': {'queue': 'low_priority'},
     }
 )
+
+app.conf.beat_schedule = {
+    'update-weather-hourly': {
+        'task': 'tasks.updateWeatherTask',
+        'schedule': crontab(minute=0, hour='4-22'),
+    },
+}

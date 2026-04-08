@@ -9,9 +9,13 @@ import courseService
 import portalService
 from utils import log
 import teleFunc
+import requests
+import json
+import redisManager
 
 # Khởi tạo Bot để gửi tin nhắn
 bot = TeleBot(os.getenv("TELE_TOKEN"))
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 def sendWorkerCheckIn(_self, _chatId):
     workerName = _self.request.hostname
@@ -101,3 +105,32 @@ def periodicPortalTask(self, chatId, dateStr):
     msg = portalService.formatCalendarMessage(chatId, dateStr, isAuto=True)
     if msg:
         bot.send_message(chatId, msg, parse_mode="HTML", disable_web_page_preview=True)
+
+@app.task(
+    name='tasks.updateWeatherTask',
+    queue='low_priority'
+)
+def updateWeatherTask():
+    if not WEATHER_API_KEY:
+        log("ERROR", "WEATHER_API_KEY chưa được cấu hình!")
+        return
+
+    campuses = {
+        "CS1": "10.8023,106.7147",
+        "CS2": "10.7934,106.7320",
+        "CS3": "10.8524,106.6361"
+    }
+
+    for code, coords in campuses.items():
+        try:
+            url = f"https://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={coords}&days=2&lang=vi"
+            res = requests.get(url, timeout=10).json()
+            
+            forecast_data = []
+            for day in res['forecast']['forecastday']:
+                forecast_data.extend(day['hour'])
+
+            redisManager.redisClient.set(f"forecast:{code}", json.dumps(forecast_data), ex=3600)
+            log("SUCCESS", f"Đã lưu dự báo 48h cho {code}")
+        except Exception as e:
+            log("ERROR", f"Lỗi fetch forecast {code}: {e}")

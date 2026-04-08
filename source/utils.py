@@ -6,6 +6,7 @@ from datetime import datetime
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 import threading
+import json
 
 load_dotenv()
 
@@ -47,3 +48,33 @@ def cancelStepTimeout(chatId):
     if chatId in userTimers:
         userTimers[chatId].cancel()
         del userTimers[chatId]
+
+def getWeatherByHour(campusCode, targetTimeStr, dateStr):
+    import redisManager
+    try:
+        cachedForecast = redisManager.redisClient.get(f"forecast:{campusCode}")
+        if not cachedForecast: 
+            return None
+        
+        forecastList = json.loads(cachedForecast)
+        
+        dtObj = datetime.strptime(f"{dateStr} {targetTimeStr}", "%d/%m/%Y %H:%M")
+        targetHourStr = dtObj.strftime("%Y-%m-%d %H:00")
+
+        for hourData in forecastList:
+            if hourData['time'] == targetHourStr:
+                conditionText = hourData['condition']['text'].lower()
+                icon = "☀️"
+                if "mưa" in conditionText: icon = "🌧️"
+                elif "dông" in conditionText: icon = "⛈️"
+                elif "mây" in conditionText: icon = "☁️"
+
+                return {
+                    "temp": hourData['temp_c'],
+                    "desc": hourData['condition']['text'],
+                    "icon": icon
+                }
+    except Exception as e:
+        log("ERROR", f"Lỗi getWeatherByHour: {e}")
+    
+    return None

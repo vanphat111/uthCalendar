@@ -32,10 +32,6 @@ def getClassesByDate(chatId, user, password, targetDate):
         }
         
         res = requests.get(f"https://portal.ut.edu.vn/api/v1/lichhoc/lichTuan?date={isoDate}", headers=headers, timeout=20)
-
-        if not res.json().get("success"):
-            utils.log("WARN", f"Server Portal trả về success: false cho {chatId}")
-            return None
         
         if res.status_code == 401:
             utils.log("WARN", f"Token của {chatId} bị Invalid. Đang login lại")
@@ -97,9 +93,27 @@ def formatCalendarMessage(chatId, dateStr, isAuto=False):
             courseLink = c.get('link', 'https://courses.ut.edu.vn/')
             statusLabel = "🛑 Tạm ngưng" if c.get("isTamNgung") else "🟢 Bình thường"
 
+            weatherLabel = ""
+            target_cs = None
+            ten_phong = c.get('tenPhong', '')
+            co_so_display = c.get('coSoToDisplay', '')
+            
+            if "CS1" in ten_phong or "Cơ sở 1" in co_so_display: target_cs = "CS1"
+            elif "CS3" in ten_phong or "Cơ sở 3" in co_so_display: target_cs = "CS3"
+            elif "CS2" in ten_phong or "Cơ sở 2" in co_so_display: target_cs = "CS2"
+            
+            if target_cs:
+                weatherData = utils.getWeatherByHour(target_cs, c['tuGio'], dateStr)
+                if weatherData:
+                    weatherLabel = (
+                        f"\n🌡️ {target_cs} (<code>{c['tuGio']}</code>): "
+                        f"{weatherData['icon']} {weatherData['temp']}°C ({weatherData['desc']})"
+                    )
+
             msg += f"\n📘 <a href='{courseLink}'>{c['tenMonHoc']}</a>"
             msg += f"\n⏰ {c['tuGio']} - {c['denGio']}"
             msg += f"\n📍 {c['tenPhong']}"
+            msg += weatherLabel
             msg += f"\n📌 {statusLabel}\n"
         msg += f"\n🔗 <a href='https://portal.ut.edu.vn/'>Portal UTH</a>"
         return msg

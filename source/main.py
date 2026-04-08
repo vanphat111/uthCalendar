@@ -3,6 +3,7 @@
 
 import telebot, os, threading, schedule, time
 import teleBot, cronService, database as db
+import task
 from utils import log
 
 bot = telebot.TeleBot(os.getenv("TELE_TOKEN"))
@@ -19,6 +20,7 @@ def runScheduler():
 
 if __name__ == "__main__":
     db.initDb()
+    task.updateWeatherTask.delay()
     teleBot.registerHandlers(bot)
     threading.Thread(target=runScheduler, daemon=True).start()
     log("SYSTEM", "Bot UTH v2.1.4 (Multi-Task & Dict-based) đã sẵn sàng!")
