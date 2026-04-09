@@ -1,10 +1,12 @@
-import requests
+from curl_cffi import requests
 import time
 from datetime import datetime, timedelta
 import database as db
 import utils
 import re
 import redisManager
+
+courseSession = requests.Session(impersonate="chrome110")
 
 def rebuildSession(cookieDict):
     session = requests.Session()
@@ -15,7 +17,8 @@ def rebuildSession(cookieDict):
 def getValidCourseSession(chatId, rawUser, rawPass):
     cached = redisManager.getSession(chatId, 'course')
     if cached:
-        session = rebuildSession(cached['cookies'])
+        session = requests.Session(impersonate="chrome110")
+        session.cookies.update(cached['cookies'])
         return session, cached['sesskey']
 
     session, sesskey = fetchMoodleSession(rawUser, rawPass) 
@@ -23,32 +26,29 @@ def getValidCourseSession(chatId, rawUser, rawPass):
     if session and sesskey:
         data = {
             "sesskey": sesskey,
-            "cookies": requests.utils.dict_from_cookiejar(session.cookies)
+            "cookies": session.cookies.get_dict()
         }
         redisManager.saveSession(chatId, 'course', data)
         
     return session, sesskey
 
 def fetchMoodleSession(username, password):
-    session = requests.Session()
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     try:
         fakeCaptcha = utils.generateFakeCaptcha()
         url = f"https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response={fakeCaptcha}"
         
-        r_portal = session.post(url, json={"username": username, "password": password}, headers=headers, timeout=15)
+        rPortal = courseSession.post(url, json={"username": username, "password": password}, timeout=15)
+        jwtToken = rPortal.json().get("token")
+        if not jwtToken: return None, None
 
-        jwt = r_portal.json().get("token")
-        if not jwt: return None, None
+        jumpUrl = f"https://courses.ut.edu.vn/login/index.php?token={jwtToken}"
+        courseSession.get(jumpUrl, timeout=15)
 
-        jump_url = f"https://courses.ut.edu.vn/login/index.php?token={jwt}"
-        session.get(jump_url, timeout=15)
-
-        r_home = session.get("https://courses.ut.edu.vn/my/", timeout=15)
-        sesskey_match = re.search(r'"sesskey":"([^"]+)"', r_home.text)
-        sesskey = sesskey_match.group(1) if sesskey_match else None
+        rHome = courseSession.get("https://courses.ut.edu.vn/my/", timeout=15)
+        sesskeyMatch = re.search(r'"sesskey":"([^"]+)"', rHome.text)
+        sesskey = sesskeyMatch.group(1) if sesskeyMatch else None
         
-        return session, sesskey
+        return courseSession, sesskey
     except Exception as e:
         utils.log("ERROR", f"Lỗi login Moodle: {e}")
         return None, None

@@ -6,7 +6,7 @@ import json
 import os
 from utils import log
 import utils
-import requests
+from curl_cffi import requests
 
 redisClient = redis.Redis(
     host=os.getenv('REDIS_HOST', 'uth_redis'), 
@@ -40,6 +40,7 @@ def loginAndSaveToken(chatId, user, password):
         r = requests.post(
             url, 
             json={"username": user, "password": password}, 
+            impersonate="chrome110",
             timeout=15
         )
         data = r.json()
