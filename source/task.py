@@ -9,9 +9,9 @@ import courseService
 import portalService
 from utils import log
 import teleFunc
-import requests
 import json
 import redisManager
+import utils
 
 # Khởi tạo Bot để gửi tin nhắn
 bot = TeleBot(os.getenv("TELE_TOKEN"))
@@ -124,13 +124,19 @@ def updateWeatherTask():
     for code, coords in campuses.items():
         try:
             url = f"https://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={coords}&days=2&lang=vi"
-            res = requests.get(url, timeout=10).json()
+            response = utils.safeRequest("GET", url)
             
-            forecast_data = []
-            for day in res['forecast']['forecastday']:
-                forecast_data.extend(day['hour'])
+            if response and response.status_code == 200:
+                data = response.json() 
+                
+                forecast_data = []
+                for day in data['forecast']['forecastday']:
+                    forecast_data.extend(day['hour'])
 
-            redisManager.redisClient.set(f"forecast:{code}", json.dumps(forecast_data), ex=3600)
-            log("SUCCESS", f"Đã lưu dự báo 48h cho {code}")
+                redisManager.redisClient.set(f"forecast:{code}", json.dumps(forecast_data), ex=3600)
+                log("SUCCESS", f"Đã lưu dự báo 48h cho {code}")
+            else:
+                log("ERROR", f"Không thể lấy weather cho {code}, Code: {response.status_code if response else 'None'}")
+                
         except Exception as e:
             log("ERROR", f"Lỗi fetch forecast {code}: {e}")

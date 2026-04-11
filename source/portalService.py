@@ -1,20 +1,20 @@
 # Copyright (c) 2026 vanphat111 <phathovan14122006@email.com> | All rights reserved
 # portalService.py
 
-from curl_cffi import requests
+# from curl_cffi import requests
 from datetime import datetime
 import database as db
 import utils
 import redisManager
 
-session = requests.Session(impersonate="chrome110")
+# session = requests.Session(impersonate="chrome110")
 
 def verifyUthCredentials(user, password):
     try:
         fakeCaptcha = utils.generateFakeCaptcha()
         url = f"https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response={fakeCaptcha}"
 
-        r = session.post(url, json={"username": user, "password": password}, timeout=15)
+        r = utils.safeRequest("POST", url, json={"username": user, "password": password})
         data = r.json()
         if r.status_code == 200 and data.get("token"): return True, "Thành công"
         return False, data.get("message", "Sai tài khoản hoặc mật khẩu")
@@ -36,7 +36,7 @@ def getClassesByDate(chatId, user, password, targetDate):
             "accept": "application/json, text/plain, */*"
         }
         
-        res = session.get(f"https://portal.ut.edu.vn/api/v1/lichhoc/lichTuan?date={isoDate}", headers=headers, timeout=20)
+        res = utils.safeRequest("GET", f"https://portal.ut.edu.vn/api/v1/lichhoc/lichTuan?date={isoDate}", headers=headers)
         # print(res.text)
         
         if res.status_code == 401:
@@ -44,7 +44,8 @@ def getClassesByDate(chatId, user, password, targetDate):
             tk = redisManager.loginAndSaveToken(chatId, user, password) 
             if not tk: return None
             headers["authorization"] = f"Bearer {tk}"
-            res = session.get(f"https://portal.ut.edu.vn/api/v1/lichhoc/lichTuan?date={isoDate}", headers=headers)
+            url = f"https://portal.ut.edu.vn/api/v1/lichhoc/lichTuan?date={isoDate}"
+            res = utils.safeRequest("GET", url, headers=headers)
             
         body = res.json().get("body", [])
         
@@ -77,7 +78,7 @@ def getValidPortalToken(chatId, rawUser, rawPass):
     try:
         fakeCaptcha = utils.generateFakeCaptcha()
         url = f"https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response={fakeCaptcha}"
-        r = session.post(url, json={"username": rawUser, "password": rawPass}, timeout=15)
+        r = utils.safeRequest("POST", url, json={"username": rawUser, "password": rawPass})
 
         token = r.json().get("token")
         utils.log("INFO", f"Portal trả về: {r.json().get('message')}")

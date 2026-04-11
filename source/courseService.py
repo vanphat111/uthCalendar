@@ -6,7 +6,7 @@ import utils
 import re
 import redisManager
 
-courseSession = requests.Session(impersonate="chrome110")
+# courseSession = requests.Session(impersonate="chrome110")
 
 def rebuildSession(cookieDict):
     session = requests.Session()
@@ -17,41 +17,40 @@ def rebuildSession(cookieDict):
 def getValidCourseSession(chatId, rawUser, rawPass):
     cached = redisManager.getSession(chatId, 'course')
     if cached:
-        session = requests.Session(impersonate="chrome110")
-        session.cookies.update(cached['cookies'])
-        return session, cached['sesskey']
+        return cached['cookies'], cached['sesskey']
 
     session, sesskey = fetchMoodleSession(rawUser, rawPass) 
     
     if session and sesskey:
         data = {
             "sesskey": sesskey,
-            "cookies": session.cookies.get_dict()
+            "cookies": session
         }
         redisManager.saveSession(chatId, 'course', data)
         
     return session, sesskey
 
 def fetchMoodleSession(username, password):
-    try:
-        fakeCaptcha = utils.generateFakeCaptcha()
-        url = f"https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response={fakeCaptcha}"
-        
-        rPortal = courseSession.post(url, json={"username": username, "password": password}, timeout=15)
-        jwtToken = rPortal.json().get("token")
-        if not jwtToken: return None, None
+    with requests.Session(impersonate="chrome110") as s:
+        try:
+            h = {"Connection": "close"}
+            fakeCaptcha = utils.generateFakeCaptcha()
+            url = f"https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response={fakeCaptcha}"
+            
+            r1 = s.post(url, json={"username": username, "password": password}, headers=h, timeout=15)
+            jwt = r1.json().get("token")
+            if not jwt: return None, None
 
-        jumpUrl = f"https://courses.ut.edu.vn/login/index.php?token={jwtToken}"
-        courseSession.get(jumpUrl, timeout=15)
-
-        rHome = courseSession.get("https://courses.ut.edu.vn/my/", timeout=15)
-        sesskeyMatch = re.search(r'"sesskey":"([^"]+)"', rHome.text)
-        sesskey = sesskeyMatch.group(1) if sesskeyMatch else None
-        
-        return courseSession, sesskey
-    except Exception as e:
-        utils.log("ERROR", f"Lỗi login Moodle: {e}")
-        return None, None
+            s.get(f"https://courses.ut.edu.vn/login/index.php?token={jwt}", headers=h, timeout=15)
+            rHome = s.get("https://courses.ut.edu.vn/my/", headers=h, timeout=15)
+            
+            sesskeyMatch = re.search(r'"sesskey":"([^"]+)"', rHome.text)
+            sesskey = sesskeyMatch.group(1) if sesskeyMatch else None
+            
+            return s.cookies.get_dict(), sesskey
+        except Exception as e:
+            utils.log("ERROR", f"Lỗi login Moodle: {e}")
+            return None, None
 
 def prepareMonthlyPayload(startDate, numDays):
     now_ts = int(startDate.timestamp())
@@ -78,60 +77,63 @@ def prepareMonthlyPayload(startDate, numDays):
         })
     return payload, now_ts, end_ts
 
-def getDeadlineMessages(chatId, session, sesskey, startDate=None, numDays=7):
+def getDeadlineMessages(chatId, cookieDict, sesskey, startDate=None, numDays=7):
     if startDate is None:
         startDate = datetime.now()
         
     payload, startTs, endTs = prepareMonthlyPayload(startDate, numDays)
     url = f"https://courses.ut.edu.vn/lib/ajax/service.php?sesskey={sesskey}"
     
-    try:
-        r = session.post(url, json=payload, timeout=15)
-        responses = r.json()
+    with requests.Session(impersonate="chrome110") as s:
+        s.cookies.update(cookieDict)
+        
+        try:
+            r = s.post(url, json=payload, headers={"Connection": "close"}, timeout=15)
+            responses = r.json()
 
-        if responses and isinstance(responses, list) and responses[0].get('error'):
-            utils.log("WARN", f"Session Moodle của {chatId} đã hết hạn")
-            return None
-        
-        all_events = []
-        completedIds = db.getCompletedTaskIds(chatId)
-
-        for res in responses:
-            if res.get('error'): continue
-            for week in res['data']['weeks']:
-                for day in week['days']:
-                    for event in day['events']:
-                        if startTs <= event['timesort'] <= endTs:
-                            if not any(e['id'] == event['id'] for e in all_events):
-                                all_events.append(event)
-        
-        all_events.sort(key=lambda x: x['timesort'])
-        
-        msgList = []
-        for e in all_events:
-            due_dt = datetime.fromtimestamp(e['timesort']) + timedelta(hours=7, minutes=-30)
-            due = due_dt.strftime('%d/%m/%Y %H:%M')
-            isDone = str(e['id']) in completedIds
-            status = "✅ Đã xong" if isDone else "❌ Chưa xong"
+            if responses and isinstance(responses, list) and responses[0].get('error'):
+                utils.log("WARN", f"Session Moodle của {chatId} đã hết hạn")
+                return None
             
-            text = (
-                f"🔔 <a href='{e.get('url')}'><b>{e['name']}</b></a>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"📝 <b>Trạng thái:</b> {status}\n"
-                f"📚 <b>Môn:</b> {e['course']['fullname']}\n"
-                f"⏰ <b>Hạn:</b> <code>{due}</code>"
-            )
+            allEvents = []
+            completedIds = db.getCompletedTaskIds(chatId)
 
-            msgList.append({
-                "text": text,
-                "callback": f"undone_{e['id']}" if isDone else f"done_{e['id']}",
-                "btnText": "❌ Đánh dấu chưa xong" if isDone else "✅ Đánh dấu hoàn thành"
-            })
-        return msgList
+            for res in responses:
+                if res.get('error'): continue
+                for week in res['data']['weeks']:
+                    for day in week['days']:
+                        for event in day['events']:
+                            if startTs <= event['timesort'] <= endTs:
+                                if not any(e['id'] == event['id'] for e in allEvents):
+                                    allEvents.append(event)
+            
+            allEvents.sort(key=lambda x: x['timesort'])
+            
+            msgList = []
+            for e in allEvents:
+                dueDt = datetime.fromtimestamp(e['timesort']) + timedelta(hours=7, minutes=-30)
+                dueStr = dueDt.strftime('%d/%m/%Y %H:%M')
+                isDone = str(e['id']) in completedIds
+                status = "✅ Đã xong" if isDone else "❌ Chưa xong"
+                
+                text = (
+                    f"🔔 <a href='{e.get('url')}'><b>{e['name']}</b></a>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"📝 <b>Trạng thái:</b> {status}\n"
+                    f"📚 <b>Môn:</b> {e['course']['fullname']}\n"
+                    f"⏰ <b>Hạn:</b> <code>{dueStr}</code>"
+                )
 
-    except Exception as e:
-        utils.log("ERROR", f"Lỗi lấy message deadline: {e}")
-        return []
+                msgList.append({
+                    "text": text,
+                    "callback": f"undone_{e['id']}" if isDone else f"done_{e['id']}",
+                    "btnText": "❌ Đánh dấu chưa xong" if isDone else "✅ Đánh dấu hoàn thành"
+                })
+            return msgList
+
+        except Exception as e:
+            utils.log("ERROR", f"Lỗi lấy message deadline: {e}")
+            return []
 
 def scanAllDeadlines(bot, chatId, isManual=False, startDate=None, numDays=7):
     u = db.getUserCredentials(chatId)
@@ -153,7 +155,10 @@ def scanAllDeadlines(bot, chatId, isManual=False, startDate=None, numDays=7):
         redisManager.deleteSession(chatId, 'course')
         session, sesskey = fetchMoodleSession(rawUser, rawPass)
         if session and sesskey:
-            data = {"sesskey": sesskey, "cookies": requests.utils.dict_from_cookiejar(session.cookies)}
+            data = {
+                "sesskey": sesskey,
+                "cookies": session
+                }
             redisManager.saveSession(chatId, 'course', data)
             messages = getDeadlineMessages(chatId, session, sesskey, startDate=startDate, numDays=numDays)
             

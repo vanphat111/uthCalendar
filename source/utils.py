@@ -9,6 +9,7 @@ import threading
 import json
 import string
 import random
+from curl_cffi import requests
 
 load_dotenv()
 
@@ -84,3 +85,20 @@ def getWeatherByHour(campusCode, targetTimeStr, dateStr):
 def generateFakeCaptcha(length=30):
     chars = string.ascii_letters + string.digits + "-_"
     return ''.join(random.choice(chars) for _ in range(length))
+
+def safeRequest(method, url, **kwargs):
+    headers = kwargs.get("headers", {})
+    headers.update({"Connection": "close"})
+    kwargs["headers"] = headers
+    
+    kwargs.setdefault("impersonate", "chrome110")
+    kwargs.setdefault("timeout", 20)
+
+    try:
+        with requests.Session() as s:
+            respone = getattr(s, method.lower())(url, **kwargs)
+            log(method, f"Gửi thành công request: {url}")
+            return respone
+    except Exception as e:
+        log("WARN", f"Request Error: {e}")
+        return None

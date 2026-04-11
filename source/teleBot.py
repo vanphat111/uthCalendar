@@ -2,10 +2,10 @@
 # teleBot.py
 
 from telebot import types
-import portalService
+# import portalService
 import utils
 import teleFunc
-import courseService
+# import courseService
 from datetime import datetime, timedelta
 import database as db
 import cronService
