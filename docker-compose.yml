@@ -5,8 +5,6 @@ services:
     restart: unless-stopped
     networks:
       - uth-network
-    ports:
-      - "5432:5432" # optional
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASS}
@@ -14,12 +12,48 @@ services:
     volumes:
       - uth_db_data:/var/lib/postgresql/data
 
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: uth_flaresolverr
+    restart: unless-stopped
+    networks:
+      - uth-network
+    environment:
+      - LOG_LEVEL=info
+      - TZ=Asia/Ho_Chi_Minh
+      - HEADLESS=true
+    ports:
+      - "8191:8191"
+
+  uth_auth_broker:
+    build: ./auth-broker
+    container_name: uth_auth_broker
+    restart: unless-stopped
+    depends_on:
+      - flaresolverr
+    networks:
+      - uth-network
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Ho_Chi_Minh
+      - AUTH_BROKER_DATA_DIR=/data
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FLARESOLVERR_TIMEOUT_MS=${FLARESOLVERR_TIMEOUT_MS:-120000}
+      - FLARESOLVERR_WAIT_SECONDS=${FLARESOLVERR_WAIT_SECONDS:-8}
+    volumes:
+      - auth_broker_data:/data
+    ports:
+      - "8000:8000"
+
   uth_bot:
-    image: vanphat111/uth-calendar:latest
+    build: .
+    image: bruksama/uth-notifier:local
     container_name: uth_calendar_bot
     restart: unless-stopped
     depends_on:
       - uth_db
+      - uth_redis
+      - uth_auth_broker
     networks:
       - uth-network
     environment:
@@ -32,6 +66,11 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - WEATHER_API_KEY=${WEATHER_API_KEY:-}
+      - AUTH_BROKER_URL=http://uth_auth_broker:8000
+      - CF_CLEARANCE=${CF_CLEARANCE:-}
+      - USE_PROXY_POOL=0
 
   uth_redis:
     image: redis:7-alpine
@@ -42,82 +81,98 @@ services:
     networks:
       - uth-network
     ports:
-      - "6379:6379" # optional
+      - "6379:6379"
 
   flower:
     image: mher/flower:latest
     container_name: uth_flower
+    restart: unless-stopped
     environment:
-      - CELERY_BROKER_URL=redis://uth_redis:6379/0
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
     ports:
-      - 5555:5555 # optional
+      - "5555:5555"
     depends_on:
       - uth_redis
     networks:
       - uth-network
-      - nginx-proxy # optional
 
   worker_vip:
-    image: vanphat111/uth-calendar:latest
+    image: bruksama/uth-notifier:local
     hostname: VIP_Worker
     command: python -m celery -A task worker -Q high_priority --concurrency=1 --loglevel=info
-    deploy:
-      replicas: 2
-    networks:
-      - uth-network
     depends_on:
       - uth_redis
       - uth_db
+      - uth_auth_broker
+    networks:
+      - uth-network
     environment:
       - TELE_TOKEN=${TELE_TOKEN}
+      - ADMIN_ID=${ADMIN_ID}
       - DB_HOST=${DB_HOST}
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - WEATHER_API_KEY=${WEATHER_API_KEY:-}
+      - AUTH_BROKER_URL=http://uth_auth_broker:8000
+      - CF_CLEARANCE=${CF_CLEARANCE:-}
+      - USE_PROXY_POOL=0
 
   worker_low:
-    image: vanphat111/uth-calendar:latest
+    image: bruksama/uth-notifier:local
     hostname: Low_Worker
     command: python -m celery -A task worker -Q high_priority,low_priority --concurrency=1 --loglevel=info
-    deploy:
-      replicas: 3
-    networks:
-      - uth-network
     depends_on:
       - uth_redis
       - uth_db
+      - uth_auth_broker
+    networks:
+      - uth-network
     environment:
       - TELE_TOKEN=${TELE_TOKEN}
+      - ADMIN_ID=${ADMIN_ID}
       - DB_HOST=${DB_HOST}
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - WEATHER_API_KEY=${WEATHER_API_KEY:-}
+      - AUTH_BROKER_URL=http://uth_auth_broker:8000
+      - CF_CLEARANCE=${CF_CLEARANCE:-}
+      - USE_PROXY_POOL=0
 
   celery_beat:
-    image: vanphat111/uth-calendar:latest
+    image: bruksama/uth-notifier:local
     container_name: uth_celery_beat
     command: python -m celery -A task beat --loglevel=info
-    networks:
-      - uth-network
     depends_on:
       - uth_redis
       - uth_db
+      - uth_auth_broker
+    networks:
+      - uth-network
     environment:
       - TELE_TOKEN=${TELE_TOKEN}
+      - ADMIN_ID=${ADMIN_ID}
       - DB_HOST=${DB_HOST}
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - WEATHER_API_KEY=${WEATHER_API_KEY:-}
+      - AUTH_BROKER_URL=http://uth_auth_broker:8000
+      - CF_CLEARANCE=${CF_CLEARANCE:-}
+      - USE_PROXY_POOL=0
 
 volumes:
   uth_db_data:
   redis_data:
+  auth_broker_data:
 
 networks:
   uth-network:
     driver: bridge
-  nginx-proxy: #optional
-    external: true # optional

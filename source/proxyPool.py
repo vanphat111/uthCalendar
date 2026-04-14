@@ -11,6 +11,7 @@ SOURCE_URL = "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/
 OUTPUT_FILE = "proxies.json"
 TARGET_POOL_SIZE = 50
 CHECK_TIMEOUT = 5
+PROXY_POOL_ENABLED = os.getenv("USE_PROXY_POOL", "0") == "1"
 
 class ProxyScanner:
     def __init__(self):
@@ -33,6 +34,9 @@ class ProxyScanner:
             pass
 
     def run(self):
+        if not PROXY_POOL_ENABLED:
+            log("SCANNER", "Proxy pool disabled by USE_PROXY_POOL=0")
+            return
         log("SCANNER", "Bắt đầu khởi động vòng lặp quét Proxy...")
         while True:
             self.valid_proxies = []
@@ -72,6 +76,8 @@ class ProxyScanner:
 
 def getRandomProxy():
     """Bốc ngẫu nhiên 1 proxy từ pool"""
+    if not PROXY_POOL_ENABLED:
+        return None
     # Đảm bảo dùng đường dẫn file chính xác
     if not os.path.exists(OUTPUT_FILE):
         return None

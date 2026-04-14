@@ -3,6 +3,7 @@
 
 import os
 from datetime import datetime
+from urllib.parse import urlparse
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 import threading
@@ -15,6 +16,7 @@ load_dotenv()
 
 encryptionKey = os.getenv("ENCRYPTION_KEY")
 cipherSuite = Fernet(encryptionKey.encode()) if encryptionKey else None
+cfClearance = os.getenv("CF_CLEARANCE")
 
 def getNow(): return datetime.now().strftime('%d/%m/%Y %H:%M:%S')
 def log(level, message): print(f"[{getNow()}] [{level}] {message}", flush=True)
@@ -89,7 +91,20 @@ def generateFakeCaptcha(length=30):
 def safeRequest(method, url, **kwargs):
     headers = kwargs.get("headers", {})
     headers.update({"Connection": "close"})
+
+    parsed = urlparse(url)
+    hostname = parsed.hostname or ""
+    if hostname.endswith("ut.edu.vn"):
+        headers.setdefault("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
+        headers.setdefault("Accept", "application/json, text/plain, */*")
+        headers.setdefault("Referer", f"{parsed.scheme}://{hostname}/")
+        headers.setdefault("Origin", f"{parsed.scheme}://{hostname}")
     kwargs["headers"] = headers
+
+    if cfClearance and hostname.endswith("ut.edu.vn"):
+        cookies = dict(kwargs.get("cookies") or {})
+        cookies.setdefault("cf_clearance", cfClearance)
+        kwargs["cookies"] = cookies
     
     kwargs.setdefault("impersonate", "chrome110")
     kwargs.setdefault("timeout", 20)
@@ -97,7 +112,7 @@ def safeRequest(method, url, **kwargs):
     try:
         with requests.Session() as s:
             respone = getattr(s, method.lower())(url, **kwargs)
-            log(method, f"Gửi thành công request: {url}")
+            log(method, f"Gửi thành công request: {url} -> {respone.status_code}")
             return respone
     except Exception as e:
         log("WARN", f"Request Error: {e}")

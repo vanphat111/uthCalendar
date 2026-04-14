@@ -1,56 +1,20 @@
-from curl_cffi import requests
 import time
 from datetime import datetime, timedelta
+
+from curl_cffi import requests
+
 import database as db
-import utils
-import re
 import redisManager
+import utils
 
-# courseSession = requests.Session(impersonate="chrome110")
-
-def rebuildSession(cookieDict):
-    session = requests.Session()
-    cookieJar = requests.utils.cookiejar_from_dict(cookieDict)
-    session.cookies.update(cookieJar)
-    return session
-
-def getValidCourseSession(chatId, rawUser, rawPass):
-    cached = redisManager.getSession(chatId, 'course')
-    if cached:
-        return cached['cookies'], cached['sesskey']
-
-    session, sesskey = fetchMoodleSession(rawUser, rawPass) 
-    
-    if session and sesskey:
-        data = {
-            "sesskey": sesskey,
-            "cookies": session
-        }
-        redisManager.saveSession(chatId, 'course', data)
-        
-    return session, sesskey
-
-def fetchMoodleSession(username, password):
-    with requests.Session(impersonate="chrome110") as s:
-        try:
-            h = {"Connection": "close"}
-            fakeCaptcha = utils.generateFakeCaptcha()
-            url = f"https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response={fakeCaptcha}"
-            
-            r1 = s.post(url, json={"username": username, "password": password}, headers=h, timeout=15)
-            jwt = r1.json().get("token")
-            if not jwt: return None, None
-
-            s.get(f"https://courses.ut.edu.vn/login/index.php?token={jwt}", headers=h, timeout=15)
-            rHome = s.get("https://courses.ut.edu.vn/my/", headers=h, timeout=15)
-            
-            sesskeyMatch = re.search(r'"sesskey":"([^"]+)"', rHome.text)
-            sesskey = sesskeyMatch.group(1) if sesskeyMatch else None
-            
-            return s.cookies.get_dict(), sesskey
-        except Exception as e:
-            utils.log("ERROR", f"Lỗi login Moodle: {e}")
-            return None, None
+def getValidCourseSession(chatId, rawUser, rawPass, force_refresh=False):
+    try:
+        cached = redisManager.getCourseSession(chatId, rawUser, rawPass, force_refresh=force_refresh)
+        if cached:
+            return cached.get("cookies"), cached.get("sesskey")
+    except Exception as e:
+        utils.log("ERROR", f"Lỗi lấy session Courses: {e}")
+    return None, None
 
 def prepareMonthlyPayload(startDate, numDays):
     now_ts = int(startDate.timestamp())
@@ -152,14 +116,8 @@ def scanAllDeadlines(bot, chatId, isManual=False, startDate=None, numDays=7):
 
     if messages is None:
         utils.log("INFO", f"Đang làm mới sesskey cho {chatId}")
-        redisManager.deleteSession(chatId, 'course')
-        session, sesskey = fetchMoodleSession(rawUser, rawPass)
+        session, sesskey = getValidCourseSession(chatId, rawUser, rawPass, force_refresh=True)
         if session and sesskey:
-            data = {
-                "sesskey": sesskey,
-                "cookies": session
-                }
-            redisManager.saveSession(chatId, 'course', data)
             messages = getDeadlineMessages(chatId, session, sesskey, startDate=startDate, numDays=numDays)
             
     if not messages:
