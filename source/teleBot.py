@@ -96,13 +96,11 @@ def registerHandlers(bot):
 
     @bot.message_handler(func=lambda m: m.text == "📅 Lịch hôm nay")
     def handleToday(message):
-        bot.send_message(message.chat.id, "⏳ Đang điều phối Worker để quét lịch cho bạn...")
         today = datetime.now().strftime("%d/%m/%Y")
         task.portalTask.delay(message.chat.id, today)
 
     @bot.message_handler(func=lambda m: m.text == "⏭️ Lịch ngày mai")
     def handleTomorrow(message):
-        bot.send_message(message.chat.id, "⏳ Đang điều phối Worker để quét lịch ngày mai cho bạn...")
         tomorrow = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
         task.portalTask.delay(message.chat.id, tomorrow)
 
@@ -119,7 +117,6 @@ def registerHandlers(bot):
 
     @bot.message_handler(func=lambda m: m.text == "📑 Quét deadline")
     def handleDeadlineScan(message):
-        bot.send_message(message.chat.id, "🔍 Đang điều phối Worker kiểm tra Deadline giúp bạn...")
         task.deadlineTask.delay(message.chat.id)
 
     @bot.message_handler(func=lambda message: message.text == "🔍 Quét tùy chỉnh")
@@ -147,8 +144,7 @@ def registerHandlers(bot):
 
     @bot.message_handler(func=lambda m: m.text == "🛠️ Kiểm tra hệ thống")
     def handleStatus(message):
-        msgWait = bot.send_message(message.chat.id, "⏳ Đang điều phối Worker kiểm tra kết nối...")
-        task.systemStatusTask.delay(message.chat.id, msgWait.message_id)
+        task.systemStatusTask.delay(message.chat.id)
 
     @bot.message_handler(func=lambda m: m.text == "📊 Admin Stats" and str(m.chat.id) == adminId)
     def handleAdminStats(message):
@@ -192,7 +188,6 @@ def processMssvStep(message, bot):
 
 def processPasswordStep(message, bot, mssv):
     pwd = message.text
-    bot.send_message(message.chat.id, "⏳ Thông tin đã được gửi cho Worker xác thực...")
     task.registrationTask.delay(message.chat.id, mssv, pwd)
 
 def processCustomDate(message, bot):
@@ -200,7 +195,6 @@ def processCustomDate(message, bot):
     try:
         dateStr = message.text
         datetime.strptime(dateStr, "%d/%m/%Y")
-        bot.send_message(message.chat.id, f"⏳ Đang điều phối Worker để quét lịch ngày {dateStr} cho bạn...")
         task.portalTask.delay(message.chat.id, dateStr)
     except ValueError:
         bot.send_message(message.chat.id, "❌ Định dạng ngày chưa đúng!\nHãy nhập theo kiểu: <b>DD/MM/YYYY</b> (ví dụ: 20/03/2026).", parse_mode="HTML")
@@ -221,7 +215,6 @@ def processDaysStep(message, startDateStr, bot):
         numDays = int(message.text)
         if numDays <= 0:
             raise ValueError("Số ngày phải lớn hơn 0")
-        bot.send_message(message.chat.id, f"🚀 Đang gửi yêu cầu quét từ {startDateStr} trong {numDays} ngày...")
         task.customDeadlineTask.delay(message.chat.id, startDateStr, numDays)
     except ValueError:
         bot.send_message(message.chat.id, "❌ Số ngày phải là số nguyên dương!")

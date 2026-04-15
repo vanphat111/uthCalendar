@@ -19,12 +19,7 @@ WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 def sendWorkerCheckIn(_self, _chatId):
     workerName = _self.request.hostname
-
-    try:
-        bot.send_message(_chatId, f"🤖 <b>[{workerName}]</b> Đã tiếp nhận lệnh của bạn. Đang xử lý... ⏳", parse_mode="HTML")
-        log("INFO", f"Đang xử lí lệnh cho user: {_chatId}")
-    except Exception as e:
-        log("ERROR", f"Không thể gửi báo danh: {e}")
+    log("INFO", f"Worker {workerName} đang xử lí lệnh cho user: {_chatId}")
 
 # ==========================================
 # 1. TASK ƯU TIÊN CAO (Dành cho User gọi lệnh)
@@ -57,9 +52,9 @@ def registrationTask(self, chatId, mssv, password):
     bot.send_message(chatId, resultMsg, parse_mode="HTML")
 
 @app.task(bind=True, name='tasks.systemStatusTask')
-def systemStatusTask(self, chatId, msgWaitId):
+def systemStatusTask(self, chatId):
     sendWorkerCheckIn(self, chatId)
-    teleFunc.getSystemStatus(bot, chatId, msgWaitId)
+    teleFunc.getSystemStatus(bot, chatId)
 
 @app.task(bind=True, name='tasks.feedbackTask')
 def feedbackTask(self, chatId, text, adminId):

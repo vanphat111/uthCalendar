@@ -8,10 +8,10 @@ import time
 import redisManager
 import courseService
 
-def getSystemStatus(bot, chatId, msgWaitId):
+def getSystemStatus(bot, chatId):
     u = db.getUserCredentials(chatId)
     if not u:
-        bot.edit_message_text("❌ Bạn chưa đăng ký tài khoản.", chatId, msgWaitId)
+        bot.send_message(chatId, "❌ Bạn chưa đăng ký tài khoản.")
         return
 
     try:
@@ -66,11 +66,11 @@ def getSystemStatus(bot, chatId, msgWaitId):
             f"🕒 <i>Cập nhật: {time.strftime('%H:%M:%S')}</i>"
         )
 
-        bot.edit_message_text(status_msg, chatId, msgWaitId, parse_mode="HTML")
+        bot.send_message(chatId, status_msg, parse_mode="HTML")
 
     except Exception as e:
         utils.log("ERROR", f"Lỗi Dashboard: {e}")
-        bot.edit_message_text("⚠️ Có chút trục trặc", chatId, msgWaitId)
+        bot.send_message(chatId, "⚠️ Có chút trục trặc")
 
 def broadcastToAllUsers(bot, content):
     try:
