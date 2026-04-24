@@ -49,7 +49,7 @@ def registrationTask(self, chatId, mssv, password):
     success, resultMsg = portalService.verifyAndSaveUser(chatId, mssv, password)
     if success:
         resultMsg += "\n\n✅ Tuyệt vời! Bạn đã đăng ký thành công. Bây giờ bạn có thể xem lịch và deadline rồi đó."
-    bot.send_message(chatId, resultMsg, parse_mode="HTML")
+    bot.send_message(chatId, resultMsg)
 
 @app.task(bind=True, name='tasks.systemStatusTask')
 def systemStatusTask(self, chatId):

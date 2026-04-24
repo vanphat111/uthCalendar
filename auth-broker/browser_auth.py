@@ -85,7 +85,7 @@ def build_auth_bundle(chat_id, username, password, force_relogin=False):
         if login_result.status_code != 200 or not token:
             raise AuthBootstrapError(login_data.get("message") or f"Portal login failed: HTTP {login_result.status_code}")
 
-        course_result = _bootstrap_course_session(portal_session, token)
+        course_result = _bootstrap_course_session(portal_session, token, solve_data.get("cookies") or [])
         course_html = course_result.text
         sesskey = _extract_sesskey(course_html)
         if not sesskey:
@@ -193,7 +193,8 @@ def _destroy_flaresolverr_session(session_id):
 
 
 def _solve_portal_challenge(session_id):
-    data = _flaresolverr_request(
+    # Giải quyết challenge của portal trước
+    data_portal = _flaresolverr_request(
         {
             "cmd": "request.get",
             "session": session_id,
@@ -202,16 +203,51 @@ def _solve_portal_challenge(session_id):
             "waitInSeconds": FLARESOLVERR_WAIT_SECONDS,
         }
     )
-    solution = data.get("solution") or {}
+    solution = data_portal.get("solution") or {}
+    
+    # Sau đó giải quyết luôn challenge của courses trong cùng một session
+    # Điều này đảm bảo flaresolverr đã pass cả 2 bên (vì cloudflare có thể phân lập challenge theo sub-domain)
+    _flaresolverr_request(
+        {
+            "cmd": "request.get",
+            "session": session_id,
+            "url": "https://courses.ut.edu.vn/",
+            "maxTimeout": FLARESOLVERR_TIMEOUT_MS,
+            "waitInSeconds": FLARESOLVERR_WAIT_SECONDS,
+        }
+    )
+    
+    # Gom lại toàn bộ cookies của session hiện tại (bao gồm cả portal và courses)
+    session_info = _flaresolverr_request(
+        {
+            "cmd": "sessions.list",
+        }
+    )
+    
+    # Vì API flaresolverr sessions.list không trả về cookie chi tiết của từng url, 
+    # ta nên sử dụng kết quả của cookie lúc giải courses bổ sung vào portal
+    # Thay vào đó, gọi thêm 1 lệnh request.get cho portal để lấy full cookies 
+    final_data = _flaresolverr_request(
+        {
+            "cmd": "request.get",
+            "session": session_id,
+            "url": "https://portal.ut.edu.vn/",
+            "maxTimeout": 10000, 
+            "waitInSeconds": 1,
+        }
+    )
+    
+    final_solution = final_data.get("solution") or {}
+    
     response_html = solution.get("response") or ""
     content_type = (solution.get("headers") or {}).get("content-type", "")
     if "just a moment" in response_html.lower() or "performing security verification" in response_html.lower():
         raise AuthUpstreamBlocked(f"Cloudflare challenge still present after FlareSolverr. body_snippet={_snippet(response_html)}")
-    if not solution.get("cookies"):
+    if not final_solution.get("cookies"):
         raise AuthBootstrapError("FlareSolverr did not return any portal cookies")
     if content_type and "text/html" not in content_type.lower():
         raise AuthBootstrapError(f"Unexpected portal bootstrap content-type from FlareSolverr: {content_type}")
-    return solution
+    return final_solution
 
 
 def _apply_cookie_list(session, cookies):
@@ -234,7 +270,11 @@ def _portal_login(session, username, password):
     )
 
 
-def _bootstrap_course_session(session, token):
+def _bootstrap_course_session(session, token, solve_data_cookies):
+    # Trích xuất và áp dụng lại cookies từ Flaresolverr, đặc biệt là cf_clearance nếu có
+    # cf_clearance từ courses.ut.edu.vn có thể được gán vào parent domain .ut.edu.vn
+    _apply_cookie_list(session, solve_data_cookies)
+    
     session.get(
         f"https://courses.ut.edu.vn/login/index.php?token={token}",
         timeout=LOGIN_TIMEOUT_SECONDS,
@@ -258,7 +298,8 @@ def _cookie_matches_domain(cookie_domain, target_host):
 def _cookie_dict_for_domain(cookiejar, domain_fragment):
     out = {}
     for cookie in cookiejar:
-        if _cookie_matches_domain(cookie.domain, domain_fragment):
+        # Check if the cookie is explicitly needed for our domain or if it's a Cloudflare clearance cookie
+        if _cookie_matches_domain(cookie.domain, domain_fragment) or cookie.name == "cf_clearance":
             out[cookie.name] = cookie.value
     return out
 

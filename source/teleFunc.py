@@ -26,9 +26,9 @@ def getSystemStatus(bot, chatId):
 
         # Check Portal & Moodle
         start_pt = time.time()
-        portal_ok, portal_msg = portalService.verifyUthCredentials(rawUser, rawPass)
+        portal_ok, portal_msg = portalService.verifyUthCredentials(chatId, rawUser, rawPass)
         pt_lat = round((time.time() - start_pt) * 1000)
-        md_session, md_sesskey = courseService.fetchMoodleSession(rawUser, rawPass)
+        md_session, md_sesskey, _ = courseService.getValidCourseSession(chatId, rawUser, rawPass)
         moodle_ok = True if md_sesskey else False
 
         # --- 3. KIỂM TRA HẠ TẦNG & ĐỘ TRỄ ---
@@ -66,7 +66,7 @@ def getSystemStatus(bot, chatId):
             f"🕒 <i>Cập nhật: {time.strftime('%H:%M:%S')}</i>"
         )
 
-        bot.send_message(chatId, status_msg, parse_mode="HTML")
+        bot.send_message(chatId, status_msg)
 
     except Exception as e:
         utils.log("ERROR", f"Lỗi Dashboard: {e}")
