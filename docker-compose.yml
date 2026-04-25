@@ -1,12 +1,35 @@
+version: "3.8"
+
 services:
+  # Cloudflare WARP - Cổng kết nối bảo mật cho Bot và Worker
+  uth_warp:
+    image: caomingjun/warp
+    container_name: uth_warp
+    restart: always
+    device_cgroup_rules:
+      - 'c 10:200 rwm'
+    cap_add:
+      - MKNOD
+      - AUDIT_WRITE
+      - NET_ADMIN
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.conf.all.src_valid_mark=1
+    environment:
+      - WARP_SLEEP=2
+      - LOG_LEVEL=info
+    volumes:
+      - uth_warp_data:/var/lib/cloudflare-warp
+    networks:
+      - uth-network
+
+  # Database - PostgreSQL
   uth_db:
     image: postgres:15-alpine
     container_name: uth_calendar_db
     restart: unless-stopped
     networks:
       - uth-network
-    ports:
-      - "5432:5432" # optional
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASS}
@@ -14,14 +37,28 @@ services:
     volumes:
       - uth_db_data:/var/lib/postgresql/data
 
+  # Redis - Celery Broker
+  uth_redis:
+    image: redis:7-alpine
+    container_name: uth_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - uth-network
+
+  # Telegram Bot
   uth_bot:
     image: vanphat111/uth-calendar:latest
     container_name: uth_calendar_bot
     restart: unless-stopped
     depends_on:
       - uth_db
+      - uth_warp
     networks:
       - uth-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Ho_Chi_Minh
@@ -32,42 +69,25 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - WARP_PROXY_URL=socks5://uth_warp:1080
 
-  uth_redis:
-    image: redis:7-alpine
-    container_name: uth_redis
-    restart: always
-    volumes:
-      - redis_data:/data
-    networks:
-      - uth-network
-    ports:
-      - "6379:6379" # optional
-
-  flower:
-    image: mher/flower:latest
-    container_name: uth_flower
-    environment:
-      - CELERY_BROKER_URL=redis://uth_redis:6379/0
-    ports:
-      - 5555:5555 # optional
-    depends_on:
-      - uth_redis
-    networks:
-      - uth-network
-      - nginx-proxy # optional
-
+  # Worker VIP - Chỉ xử lý hàng ưu tiên
   worker_vip:
     image: vanphat111/uth-calendar:latest
     hostname: VIP_Worker
+    restart: unless-stopped
     command: python -m celery -A task worker -Q high_priority --concurrency=1 --loglevel=info
     deploy:
       replicas: 2
     networks:
       - uth-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - uth_redis
       - uth_db
+      - uth_warp
     environment:
       - TELE_TOKEN=${TELE_TOKEN}
       - DB_HOST=${DB_HOST}
@@ -75,18 +95,25 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - WARP_PROXY_URL=socks5://uth_warp:1080
 
+  # Worker Low - Xử lý đa nhiệm
   worker_low:
     image: vanphat111/uth-calendar:latest
     hostname: Low_Worker
+    restart: unless-stopped
     command: python -m celery -A task worker -Q high_priority,low_priority --concurrency=1 --loglevel=info
     deploy:
       replicas: 3
     networks:
       - uth-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - uth_redis
       - uth_db
+      - uth_warp
     environment:
       - TELE_TOKEN=${TELE_TOKEN}
       - DB_HOST=${DB_HOST}
@@ -94,10 +121,14 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - WARP_PROXY_URL=socks5://uth_warp:1080
 
+  # Celery Beat - Lập lịch định kỳ
   celery_beat:
     image: vanphat111/uth-calendar:latest
     container_name: uth_celery_beat
+    restart: unless-stopped
     command: python -m celery -A task beat --loglevel=info
     networks:
       - uth-network
@@ -111,13 +142,27 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+
+  # Flower - Giám sát Celery
+  flower:
+    image: mher/flower:latest
+    container_name: uth_flower
+    restart: unless-stopped
+    environment:
+      - CELERY_BROKER_URL=redis://uth_redis:6379/0
+    ports:
+      - "5555:5555"
+    depends_on:
+      - uth_redis
+    networks:
+      - uth-network
 
 volumes:
   uth_db_data:
   redis_data:
+  uth_warp_data:
 
 networks:
   uth-network:
     driver: bridge
-  nginx-proxy: #optional
-    external: true # optional
