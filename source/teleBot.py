@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import database as db
 import cronService
 import task
+import rate_limit
 
 adminId = utils.os.getenv("ADMIN_ID")
 
@@ -59,8 +60,11 @@ def setBotCommands(bot):
     except: pass
 
 def registerHandlers(bot):
+    # Rate limit handler
+    limit = rate_limit.ratelimit_handler(bot)
     
     @bot.message_handler(commands=['start', 'help'])
+    @limit
     def welcome(message):
         welcomeText = (
             "👋 <b>Chào bạn! Mình là Bot nhắc lịch UTH.</b>\n\n"
@@ -72,6 +76,7 @@ def registerHandlers(bot):
         bot.send_message(message.chat.id, welcomeText, parse_mode="HTML", reply_markup=mainMenu(message.chat.id))
 
     @bot.message_handler(commands=['broadcast'])
+    @limit
     def handleAdminBroadcast(message):
         if str(message.chat.id) != adminId: return
         rawInput = message.text.split(maxsplit=1)
@@ -95,39 +100,46 @@ def registerHandlers(bot):
         bot.send_message(message.chat.id, "🏠 Đã quay lại Menu chính.", reply_markup=mainMenu(message.chat.id))
 
     @bot.message_handler(func=lambda m: m.text == "📅 Lịch hôm nay")
+    @limit
     def handleToday(message):
         bot.send_message(message.chat.id, "⏳ Đang điều phối Worker để quét lịch cho bạn...")
         today = datetime.now().strftime("%d/%m/%Y")
         task.portalTask.delay(message.chat.id, today)
 
     @bot.message_handler(func=lambda m: m.text == "⏭️ Lịch ngày mai")
+    @limit
     def handleTomorrow(message):
         bot.send_message(message.chat.id, "⏳ Đang điều phối Worker để quét lịch ngày mai cho bạn...")
         tomorrow = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
         task.portalTask.delay(message.chat.id, tomorrow)
 
     @bot.message_handler(func=lambda m: m.text == "📆 Lịch ngày tùy chọn")
+    @limit
     def handleCustomDateRequest(message):
         msg = bot.send_message(message.chat.id, "📅 Bạn vui lòng nhập ngày muốn xem (Định dạng: <code>DD/MM/YYYY</code>):", parse_mode="HTML")
         utils.startStepTimeout(bot, message.chat.id) 
         bot.register_next_step_handler(msg, processCustomDate, bot)
 
     @bot.message_handler(func=lambda m: m.text == "🔔 Bật tắt thông báo lịch")
+    @limit
     def handleTogglePortal(message):
         _, resMsg = teleFunc.handleToggleNotify(message.chat.id)
         bot.send_message(message.chat.id, resMsg, parse_mode="HTML")
 
     @bot.message_handler(func=lambda m: m.text == "📑 Quét deadline")
+    @limit
     def handleDeadlineScan(message):
         bot.send_message(message.chat.id, "🔍 Đang điều phối Worker kiểm tra Deadline giúp bạn...")
         task.deadlineTask.delay(message.chat.id)
 
     @bot.message_handler(func=lambda message: message.text == "🔍 Quét tùy chỉnh")
+    @limit
     def handleCustomScan(message):
         msg = bot.send_message(message.chat.id, "📅 Nhập ngày bắt đầu quét (Định dạng: DD/MM/YYYY\nVD: 01/04/2026):")
         bot.register_next_step_handler(msg, processDateStep, bot)
 
     @bot.message_handler(func=lambda m: m.text == "📢 Bật tắt thông báo hằng tuần")
+    @limit
     def handleToggleCourse(message):
         chatId = message.chat.id
         _, resMsg = teleFunc.handleToggleDeadlineNotify(chatId)
@@ -135,6 +147,7 @@ def registerHandlers(bot):
 
     @bot.message_handler(commands=['login'])
     @bot.message_handler(func=lambda m: m.text == "🔑 Đăng ký")
+    @limit
     def handleRegister(message):
         msg = bot.send_message(message.chat.id, "🔑 <b>Bắt đầu đăng ký:</b>\n\nBạn vui lòng nhập <b>MSSV</b> của mình nhé:", parse_mode="HTML")
         bot.register_next_step_handler(msg, processMssvStep, bot)
@@ -146,6 +159,7 @@ def registerHandlers(bot):
         bot.register_next_step_handler(msg, processFeedback, bot)
 
     @bot.message_handler(func=lambda m: m.text == "🛠️ Kiểm tra hệ thống")
+    @limit
     def handleStatus(message):
         msgWait = bot.send_message(message.chat.id, "⏳ Đang điều phối Worker kiểm tra kết nối...")
         task.systemStatusTask.delay(message.chat.id, msgWait.message_id)
@@ -179,6 +193,7 @@ def registerHandlers(bot):
             threading.Thread(target=cronService.autoScanAllUsers, args=(bot,)).start()
 
     @bot.message_handler(func=lambda m: True)
+    @limit
     def handleUnknown(message):
         bot.reply_to(message, "⚠️ Lệnh này mình chưa hiểu, bạn vui lòng sử dụng các nút ở menu nhé!", reply_markup=mainMenu(message.chat.id))
 
