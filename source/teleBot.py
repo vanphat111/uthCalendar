@@ -25,10 +25,10 @@ def mainMenu(chatId):
     return markup
 
 def portalSubMenu():
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add("🔔 Bật tắt thông báo lịch")
-    markup.add("📅 Lịch hôm nay", "⏭️ Lịch ngày mai")
-    markup.add("📆 Lịch ngày tùy chọn")
+    markup.add("📅 Lịch hôm nay", "⏭️ Lịch ngày mai", "📆 Lịch ngày tùy chọn")
+    markup.add("📅 Lịch cả tuần", "🗓️ Lịch tuần sau")
     markup.add("🏠 Quay lại menu chính")
     return markup
 
@@ -125,6 +125,26 @@ def registerHandlers(bot):
     def handleTogglePortal(message):
         _, resMsg = teleFunc.handleToggleNotify(message.chat.id)
         bot.send_message(message.chat.id, resMsg, parse_mode="HTML")
+
+    @bot.message_handler(func=lambda m: m.text == "📅 Lịch cả tuần")
+    @limit
+    def handleWeekSchedule(message):
+        chatId = message.chat.id
+        bot.send_message(chatId, "⏳ Đang tổng hợp lịch tuần này cho bạn...")
+        
+        today = datetime.now().strftime("%d/%m/%Y")
+        task.portalWeekTask.delay(chatId, today)
+
+    @bot.message_handler(func=lambda m: m.text == "🗓️ Lịch tuần sau")
+    @limit
+    def handleNextWeek(message):
+        chatId = message.chat.id
+        bot.send_message(chatId, "⏳ Đang tổng hợp lịch tuần sau cho bạn...")
+        
+        next_week_dt = datetime.now() + timedelta(days=7)
+        next_week_str = next_week_dt.strftime("%d/%m/%Y")
+        
+        task.portalWeekTask.delay(chatId, next_week_str)
 
     @bot.message_handler(func=lambda m: m.text == "📑 Quét deadline")
     @limit

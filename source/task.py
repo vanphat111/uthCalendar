@@ -72,6 +72,17 @@ def customDeadlineTask(self, chatId, startDateStr, numDays):
     startDate = datetime.strptime(startDateStr, "%d/%m/%Y")
     courseService.scanAllDeadlines(bot, chatId, isManual=True, startDate=startDate, numDays=numDays)
 
+@app.task(bind=True, name="tasks.portalWeekTask", queue='high_priority')
+def portalWeekTask(self, chatId, startDateStr):
+    sendWorkerCheckIn(self, chatId)
+    try:
+        msg = portalService.format_week_calendar_message(chatId, startDateStr)
+        
+        bot.send_message(chatId, msg, parse_mode="HTML", disable_web_page_preview=True)
+        
+    except Exception as e:
+        utils.log("ERROR", f"Lỗi trong portalWeekTask: {e}")
+
 
 # ==========================================
 # 2. TASK ƯU TIÊN THẤP (Dành cho Quét định kỳ)
