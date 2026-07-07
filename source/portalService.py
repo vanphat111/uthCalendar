@@ -97,8 +97,14 @@ def getValidPortalToken(chatId, rawUser, rawPass):
         url = f"https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response={fakeCaptcha}"
         r = utils.safeRequest("POST", url, json={"username": rawUser, "password": rawPass})
 
-        token = r.json().get("token")
-        utils.log("INFO", f"Portal trả về: {r.json().get('message')}")
+        try:
+            res_data = r.json()
+        except Exception:
+            utils.log("ERROR", f"Server không trả về JSON. Mã lỗi HTTP: {r.status_code}. Nội dung: {r.text[:500]}")
+            return None
+
+        token = res_data.get("token")
+        utils.log("INFO", f"Portal trả về: {res_data.get('message')}")
         if token:
             redisManager.saveSession(chatId, 'portal', token, expire=7200)
             return token
@@ -157,12 +163,10 @@ def format_week_calendar_message(chat_id, startDateStr):
 
     raw_user = utils.decryptData(u['uth_user'])
     raw_pass = utils.decryptData(u['uth_pass'])
-
-    # Giữ nguyên logic parse ngày của mày để tính Thứ 2
+    
     now = datetime.strptime(startDateStr, "%d/%m/%Y")
     monday = now - timedelta(days=now.weekday())
 
-    # Lấy dữ liệu cả tuần (target_date_iso xử lý bên trong hàm này)
     data, error = get_classes_by_week(chat_id, raw_user, raw_pass, startDateStr)
     
     if data is False:
@@ -171,7 +175,6 @@ def format_week_calendar_message(chat_id, startDateStr):
     if not data:
         return f"🎉 Tuần từ {monday.strftime('%d/%m')} bạn không có lịch học nào cả. Nghỉ ngơi nhé!"
 
-    # Khởi tạo khung lịch 7 ngày
     week_data = { (monday + timedelta(days=i)).strftime("%d/%m/%Y"): [] for i in range(7) }
     
     for item in data:
@@ -193,8 +196,6 @@ def format_week_calendar_message(chat_id, startDateStr):
         else:
             for c in classes:
                 status = " (🛑 <b>Tạm ngưng</b>)" if c.get("isTamNgung") else ""
-                
-                # --- Logic lấy link môn học dựa trên code cũ của mày ---
                 courseLink = c.get('link') or 'https://courses.ut.edu.vn/'
                 
                 # --- Logic xác định cơ sở dựa trên code cũ của mày ---

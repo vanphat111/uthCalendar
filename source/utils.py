@@ -94,6 +94,10 @@ def safeRequest(method, url, use_proxy=True, silent=False, retries=3, **kwargs):
     
     headers = kwargs.get("headers", {})
     headers.update({"Connection": "close"})
+    
+    headers.setdefault("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+    headers.setdefault("Accept", "application/json, text/plain, */*")
+    
     kwargs["headers"] = headers
     kwargs.setdefault("impersonate", "chrome110")
     kwargs.setdefault("timeout", 10)
