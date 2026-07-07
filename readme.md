@@ -3,7 +3,7 @@
 [![Docker Image](https://img.shields.io/badge/Docker-Enabled-blue?logo=docker)](https://hub.docker.com/r/vanphat111/uth-calendar)
 [![Python Version](https://img.shields.io/badge/Python-3.11+-yellow?logo=python)](https://www.python.org/)
 [![Celery](https://img.shields.io/badge/Worker-Celery-green?logo=celery)](https://docs.celeryq.dev/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
 
 Một trợ lý Telegram thông minh, hiệu năng cao giúp sinh viên **Đại học Giao thông Vận tải TP.HCM (UTH)** quản lý lịch học và deadline tự động. Hệ thống được thiết kế để vận hành ổn định trên các server cá nhân thông qua Docker.
 
@@ -43,6 +43,7 @@ Chuẩn bị file `.env` với các tham số sau để vận hành hệ thống
 | `DB_PASS` | Mật khẩu Database |
 | `CELERY_BROKER_URL` | URL kết nối Redis (Ví dụ: `redis://uth_redis:6379/0`) |
 | `ENCRYPTION_KEY` | Khóa mã hóa AES-256 tạo bởi Fernet |
+| `WEATHER_API_KEY` | API [weatherapi](https://www.weatherapi.com/my/)|
 
 ---
 
@@ -52,7 +53,7 @@ Sử dụng Docker Compose để triển khai nhanh toàn bộ hạ tầng:
 
 1.  **Tải mã nguồn:**
     ```bash
-    git clone [https://github.com/vanphat111/uthCalendar.git](https://github.com/vanphat111/uthCalendar.git)
+    git clone https://github.com/vanphat111/uthCalendar.git
     cd uthCalendar
     ```
 2.  **Thiết lập môi trường:** Tạo file `.env` và cấu hình các biến môi trường cần thiết.
@@ -67,7 +68,7 @@ Hệ thống sẽ tự khởi động các container bao gồm **Bot Engine**, *
 
 ## 🤝 Đóng góp (Contribution)
 
-Dự án được phát triển bởi **vanphat111** (sinh viên UTH) với mục đích hỗ trợ cộng đồng. Mọi Pull Request hoặc báo lỗi đều được trân trọng.
+Dự án được phát triển bởi [**vanphat111**](https://github.com/vanphat111) (sinh viên UTH) với mục đích hỗ trợ cộng đồng. Mọi Pull Request hoặc báo lỗi đều được trân trọng.
 
 1.  Fork dự án.
 2.  Tạo branch: `git checkout -b feature/AmazingFeature`
