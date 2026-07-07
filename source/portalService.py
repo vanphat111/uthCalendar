@@ -15,10 +15,21 @@ def verifyUthCredentials(user, password):
         url = f"https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response={fakeCaptcha}"
 
         r = utils.safeRequest("POST", url, json={"username": user, "password": password})
-        data = r.json()
-        if r.status_code == 200 and data.get("token"): return True, "Thành công"
+        
+        try:
+            data = r.json()
+        except Exception:
+            utils.log("ERROR", f"Server không trả về JSON. Mã lỗi HTTP: {r.status_code}. Nội dung: {r.text[:500]}")
+            return False, "Lỗi phản hồi từ server trường"
+
+        utils.log("INFO", f"Portal trả về: {data.get('message')}")
+        
+        if r.status_code == 200 and data.get("token"): 
+            return True, "Thành công"
         return False, data.get("message", "Sai tài khoản hoặc mật khẩu")
-    except: return False, "Lỗi kết nối server trường"
+    except Exception as e: 
+        utils.log("ERROR", f"Lỗi verifyUthCredentials: {e}")
+        return False, "Lỗi kết nối server trường"
 
 def get_classes_by_week(chat_id, user, password, targetDate):
     try:
