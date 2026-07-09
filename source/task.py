@@ -89,9 +89,6 @@ def portalWeekTask(self, chatId, startDateStr):
 @app.task(bind=True, name='tasks.donateTask', queue='high_priority')
 def donateTask(self, chatId, username, amount):
     sendWorkerCheckIn(self, chatId)
-    import payosService
-    from telebot import types
-    import urllib.parse
     
     checkout_url, qr_code_str, order_code = payosService.create_donate_link(str(chatId), username, amount)
     
