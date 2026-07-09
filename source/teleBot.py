@@ -18,7 +18,7 @@ def mainMenu(chatId):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add("🏛️ Portal Menu", "📚 Course Menu") 
     markup.add("🔑 Đăng ký", "📩 Góp ý/Báo lỗi")
-    markup.add("🛠️ Kiểm tra hệ thống")
+    markup.add("🛠️ Kiểm tra hệ thống", "💰 Donate")
     if str(chatId) == str(adminId):
         btn_admin = types.KeyboardButton("⚙️ Admin Panel")
         markup.add(btn_admin)
@@ -188,6 +188,24 @@ def registerHandlers(bot):
     def handleAdminStats(message):
         bot.send_message(message.chat.id, teleFunc.getAdminStats(adminId), parse_mode="HTML")
 
+    @bot.message_handler(func=lambda m: m.text == "💰 Donate")
+    @limit
+    def handleDonateMenu(message):
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            types.InlineKeyboardButton("20k VNĐ", callback_data="donate_20000"),
+            types.InlineKeyboardButton("50k VNĐ", callback_data="donate_50000"),
+            types.InlineKeyboardButton("100k VNĐ", callback_data="donate_100000"),
+            types.InlineKeyboardButton("200k VNĐ", callback_data="donate_200000"),
+            types.InlineKeyboardButton("✏️ Số tiền tùy chọn", callback_data="donate_custom")
+        )
+        bot.send_message(
+            message.chat.id, 
+            "☕ <b>ỦNG HỘ PHÁT TRIỂN BOT</b>\n\nSự ủng hộ của bạn giúp mình có thêm chi phí duy trì server và phát triển các tính năng mới cho Bot UTH.\nVui lòng chọn số tiền bạn muốn donate dưới đây:", 
+            parse_mode="HTML", 
+            reply_markup=markup
+        )
+
     @bot.callback_query_handler(func=lambda call: call.data.startswith('done_'))
     def onMarkDone(call):
         handleMarkDone(bot, call)
@@ -211,6 +229,26 @@ def registerHandlers(bot):
         elif call.data == "test_cron_deadline":
             bot.answer_callback_query(call.id, "🚀 Đang chạy quét deadline...")
             threading.Thread(target=cronService.autoScanAllUsers, args=(bot,)).start()
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('donate_'))
+    def onDonateCallback(call):
+        chatId = call.message.chat.id
+        action = call.data.split('_')[1]
+        
+        if action == "custom":
+            bot.answer_callback_query(call.id)
+            msg = bot.send_message(chatId, "💰 Nhập số tiền muốn donate (Ví dụ: 30000):")
+            utils.startStepTimeout(bot, chatId)
+            bot.register_next_step_handler(msg, processCustomDonateAmount, bot)
+        else:
+            try:
+                amount = int(action)
+                bot.answer_callback_query(call.id)
+                bot.send_message(chatId, "⏳ Đang điều phối Worker khởi tạo mã VietQR...")
+                task.donateTask.delay(chatId, call.from_user.username, amount)
+                bot.edit_message_reply_markup(chatId, call.message.message_id, reply_markup=None)
+            except Exception as e:
+                utils.log("ERROR", f"Lỗi xử lý callback donate: {e}")
 
     @bot.message_handler(func=lambda m: True)
     @limit
@@ -288,3 +326,15 @@ def handleMarkUndone(bot, call):
             bot.edit_message_text(new_text, chatId, call.message.message_id, parse_mode="HTML", reply_markup=markup)
         except: pass
         bot.answer_callback_query(call.id, "❌ Đã chuyển trạng thái về chưa hoàn thành.")
+
+def processCustomDonateAmount(message, bot):
+    utils.cancelStepTimeout(message.chat.id)
+    try:
+        amount = int(message.text.strip())
+        if amount < 2000:
+            bot.send_message(message.chat.id, "⚠️ Số tiền tối thiểu để tạo mã QR là 2.000 VNĐ.")
+            return
+        bot.send_message(message.chat.id, "⏳ Đang điều phối Worker khởi tạo mã VietQR...")
+        task.donateTask.delay(message.chat.id, message.from_user.username, amount)
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ Số tiền phải là số nguyên dương! Vui lòng bấm lại nút Donate để làm lại.")

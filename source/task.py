@@ -12,6 +12,9 @@ import teleFunc
 import json
 import redisManager
 import utils
+import payosService
+from telebot import types
+import urllib.parse
 
 # Khởi tạo Bot để gửi tin nhắn
 bot = TeleBot(os.getenv("TELE_TOKEN"))
@@ -83,6 +86,38 @@ def portalWeekTask(self, chatId, startDateStr):
     except Exception as e:
         utils.log("ERROR", f"Lỗi trong portalWeekTask: {e}")
 
+@app.task(bind=True, name='tasks.donateTask', queue='high_priority')
+def donateTask(self, chatId, username, amount):
+    sendWorkerCheckIn(self, chatId)
+    import payosService
+    from telebot import types
+    import urllib.parse
+    
+    checkout_url, qr_code_str, order_code = payosService.create_donate_link(str(chatId), username, amount)
+    
+    if checkout_url and qr_code_str:
+        encoded_qr = urllib.parse.quote(qr_code_str)
+        qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=350x350&data={encoded_qr}"
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("💳 Mở trang thanh toán Web", url=checkout_url))
+        
+        msg = (
+            f"💰 <b>THÔNG TIN ỦNG HỘ (DONATE)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💵 <b>Số tiền:</b> <code>{amount:,} VNĐ</code>\n"
+            f"🆔 <b>Mã đơn hàng:</b> <code>{order_code}</code>\n\n"
+            f"👉 Quét trực tiếp mã QR ở hình trên bằng ứng dụng ngân hàng; hệ thống sẽ tự động xác nhận sau khi nhận được tiền."
+        )
+        
+        try:
+            bot.send_photo(chatId, qr_image_url, caption=msg, reply_markup=markup, parse_mode="HTML")
+            checkPaymentTask.delay(chatId, username, order_code)
+        except Exception as e:
+            log("ERROR", f"Lỗi gửi photo QR cho {chatId}: {e}")
+            bot.send_message(chatId, msg, reply_markup=markup, parse_mode="HTML")
+    else:
+        bot.send_message(chatId, "❌ Hệ thống tạo mã QR đang bận, bạn thử lại sau nhé.")
 
 # ==========================================
 # 2. TASK ƯU TIÊN THẤP (Dành cho Quét định kỳ)
@@ -151,3 +186,58 @@ def updateWeatherTask():
                 
         except Exception as e:
             log("ERROR", f"Lỗi fetch forecast {code}: {e}")
+
+@app.task(bind=True, name='tasks.checkPaymentTask', queue='low_priority')
+def checkPaymentTask(self, chatId, username, orderCode):
+    import payosService
+    from utils import log
+    
+    admin_id = os.getenv("ADMIN_ID")
+    max_retries = 90
+    current_attempt = self.request.retries + 1  
+    
+    try:
+        payment_info = payosService.payos.getPaymentLinkInformation(orderCode)
+        status = payment_info.status
+        
+        if status == "PAID":
+            amount = payment_info.amount
+            user_display = f"@{username}" if username else f"ID {chatId}"
+            
+            thank_msg = (
+                f"🎉 <b>CẢM ƠN BẠN ĐÃ ỦNG HỘ BOT!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"💖 Hệ thống đã xác nhận khoản donate thành công từ bạn.\n"
+                f"💵 <b>Số tiền:</b> <code>{amount:,} VNĐ</code>\n\n"
+                f"🚀 Sự đóng góp của bạn là nguồn kinh phí quý giá giúp mình duy trì máy chủ và phát triển thêm nhiều tính năng hữu ích cho sinh viên UTH!"
+            )
+            bot.send_message(chatId, thank_msg, parse_mode="HTML")
+            
+            if admin_id:
+                admin_msg = (
+                    f"💰 <b>TÍN TÍN! CÓ ĐƠN DONATE MỚI</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>Người gửi:</b> {user_display}\n"
+                    f"🆔 <b>Mã đơn:</b> <code>{orderCode}</code>\n"
+                    f"💵 <b>Số tiền:</b> <code>{amount:,} VNĐ</code>\n"
+                    f"🟢 <b>Trạng thái:</b> Thành công"
+                )
+                bot.send_message(admin_id, admin_msg, parse_mode="HTML")
+            return
+            
+        elif status in ["CANCELLED", "EXPIRED"]:
+            log("INFO", f"[{current_attempt}/{max_retries}] Đơn hàng {orderCode} đã bị hủy hoặc hết hạn.")
+            return
+            
+        raise RuntimeWarning("Đơn hàng chưa thanh toán.")
+        
+    except Exception as exc:
+        if self.request.retries >= max_retries:
+            log("WARN", f"[{current_attempt}/{max_retries}] Đơn hàng {orderCode} đã hết thời gian chờ 15 phút. Dừng quét!")
+            try:
+                bot.send_message(chatId, f"⏰ <b>Hết thời gian thanh toán!</b>\nMã QR đơn hàng <code>{orderCode}</code> của bạn đã hết hạn do quá 15 phút chưa nhận được tiền.", parse_mode="HTML")
+            except: pass
+            return
+
+        log("INFO", f"[{current_attempt}/{max_retries}] Đang chờ đơn hàng {orderCode} thanh toán... Thử lại sau 10 giây.")
+        self.retry(exc=exc, countdown=10, max_retries=max_retries)
