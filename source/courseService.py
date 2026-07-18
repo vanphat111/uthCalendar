@@ -9,9 +9,8 @@ import redisManager
 # courseSession = requests.Session(impersonate="chrome110")
 
 def rebuildSession(cookieDict):
-    session = requests.Session()
-    cookieJar = requests.utils.cookiejar_from_dict(cookieDict)
-    session.cookies.update(cookieJar)
+    session = requests.Session(impersonate="chrome")
+    session.cookies.update(cookieDict)
     return session
 
 def getValidCourseSession(chatId, rawUser, rawPass):
@@ -31,35 +30,89 @@ def getValidCourseSession(chatId, rawUser, rawPass):
     return session, sesskey
 
 def fetchMoodleSession(username, password):
-    with requests.Session(impersonate="chrome110") as s:
+    with requests.Session(impersonate="chrome") as s:
         try:
-            s.headers.update({
-                "Connection": "close",
-                "Accept": "application/json, text/plain, */*",
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
-            })
-            fakeCaptcha = utils.generateFakeCaptcha()
-            url = f"https://portal.ut.edu.vn/api/v1/user/login?g-recaptcha-response={fakeCaptcha}"
-            
-            r1 = s.post(url, json={"username": username, "password": password}, timeout=15)
-            
-            try:
-                res_data = r1.json()
-            except Exception:
-                utils.log("ERROR", f"Moodle Login: Server không trả về JSON. Mã HTTP: {r1.status_code}")
+            loginUrl = f"https://courses.ut.edu.vn/login/index.php"
+
+            loginPage = s.get(
+                loginUrl,
+                headers={
+                    "Accept": (
+                        "text/html,application/xhtml+xml,"
+                        "application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+                    )
+                },
+                timeout=20,
+            )
+            loginPage.raise_for_status()
+
+            tokenMatch = re.search(
+                r'name=["\']logintoken["\'][^>]*value=["\']([^"\']+)["\']',
+                loginPage.text,
+                re.IGNORECASE,
+            )
+
+            if not tokenMatch:
+                utils.log("ERROR", "Không tìm thấy Moodle logintoken")
                 return None, None
 
-            jwt = res_data.get("token")
-            if not jwt: return None, None
+            loginToken = tokenMatch.group(1)
 
-            h_moodle = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"}
-            s.get(f"https://courses.ut.edu.vn/login/index.php?token={jwt}", headers=h_moodle, timeout=15)
-            rHome = s.get("https://courses.ut.edu.vn/my/", headers=h_moodle, timeout=15)
-            
-            sesskeyMatch = re.search(r'"sesskey":"([^"]+)"', rHome.text)
-            sesskey = sesskeyMatch.group(1) if sesskeyMatch else None
-            
-            return s.cookies.get_dict(), sesskey
+            loginResponse = s.post(
+                loginUrl,
+                data={
+                    "anchor": "",
+                    "logintoken": loginToken,
+                    "username": username,
+                    "password": password,
+                },
+                headers={
+                    "Origin": "https://courses.ut.edu.vn",
+                    "Referer": loginUrl,
+                    "Accept": (
+                        "text/html,application/xhtml+xml,"
+                        "application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+                    ),
+                },
+                allow_redirects=True,
+                timeout=25,
+            )
+            loginResponse.raise_for_status()
+
+            if (
+                "/login/index.php" in str(loginResponse.url)
+                or 'name="logintoken"' in loginResponse.text
+            ):
+                utils.log("WARN", "Đăng nhập Moodle thất bại")
+                return None, None
+
+            coursePage = s.get(
+                "https://courses.ut.edu.vn/my/courses.php",
+                headers={
+                    "Referer": "https://courses.ut.edu.vn/my/",
+                    "Accept": (
+                        "text/html,application/xhtml+xml,"
+                        "application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+                    ),
+                },
+                timeout=20,
+            )
+            coursePage.raise_for_status()
+
+            sesskeyMatch = re.search(
+                r'"sesskey"\s*:\s*"([^"]+)"',
+                coursePage.text,
+            )
+
+            if not sesskeyMatch:
+                utils.log("ERROR", "Login được nhưng không thấy sesskey")
+                return None, None
+
+            cookies = s.cookies.get_dict()
+            sesskey = sesskeyMatch.group(1)
+
+            return cookies, sesskey
+
         except Exception as e:
             utils.log("ERROR", f"Lỗi login Moodle: {e}")
             return None, None
@@ -96,13 +149,12 @@ def getDeadlineMessages(chatId, cookieDict, sesskey, startDate=None, numDays=7):
     payload, startTs, endTs = prepareMonthlyPayload(startDate, numDays)
     url = f"https://courses.ut.edu.vn/lib/ajax/service.php?sesskey={sesskey}"
     
-    with requests.Session(impersonate="chrome110") as s:
+    with requests.Session(impersonate="chrome") as s:
         s.cookies.update(cookieDict)
         # Thêm headers mặc định cho Moodle Session
         s.headers.update({
             "Connection": "close",
             "Accept": "application/json, text/plain, */*",
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
         })
         
         try:
