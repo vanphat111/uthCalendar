@@ -4,10 +4,30 @@
 from celery import Celery
 from celery.schedules import crontab
 import os
+from celery.signals import worker_process_init, worker_process_shutdown
+
+import database as db
+from utils import log
+
 
 REDIS_URL = os.getenv('CELERY_BROKER_URL', 'redis://uth_redis:6379/0')
 
 app = Celery('uth_bot', broker=REDIS_URL, backend=REDIS_URL)
+
+@worker_process_init.connect
+def initWorkerDbPool(**kwargs):
+    try:
+        db.resetDbPool()
+        log("INFO", "Đã khởi tạo PostgreSQL pool cho Celery worker.")
+
+    except Exception as e:
+        log("CRITICAL", f"Không thể khởi tạo PostgreSQL pool cho Celery worker: {e}")
+        raise
+
+
+@worker_process_shutdown.connect
+def closeWorkerDbPool(**kwargs):
+    db.closeDbPool()
 
 app.conf.update(
     task_serializer='json',

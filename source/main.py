@@ -39,13 +39,34 @@ def runScheduler():
         time.sleep(30)
 
 if __name__ == "__main__":
-    db.initDb()
+    if not db.initDb():
+        log("CRITICAL", "Không thể khởi tạo PostgreSQL. Dừng hệ thống!")
+        sys.exit(1)
 
     if weather_enabled:
         task.updateWeatherTask.delay()
-    
-    teleBot.registerHandlers(bot)
-    threading.Thread(target=runScheduler, daemon=True).start()
 
-    bot.infinity_polling(timeout=20, long_polling_timeout=5)
+    teleBot.registerHandlers(bot)
+
+    threading.Thread(
+        target=runScheduler,
+        daemon=True
+    ).start()
+
     log("SYSTEM", "Bot UTH v2.3.3 đã sẵn sàng!")
+
+    try:
+        bot.infinity_polling(
+            timeout=20,
+            long_polling_timeout=5
+        )
+
+    except KeyboardInterrupt:
+        log("SYSTEM", "Đang dừng Bot UTH...")
+
+    except Exception as e:
+        log("CRITICAL", f"Bot polling bị dừng do lỗi: {e}")
+        raise
+
+    finally:
+        db.closeDbPool()

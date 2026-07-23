@@ -33,11 +33,8 @@ def getSystemStatus(bot, chatId, msgWaitId):
 
         # --- 3. KIỂM TRA HẠ TẦNG & ĐỘ TRỄ ---
         # Database
-        start_db = time.time()
-        db_conn = db.getDbConn()
-        db_ok = "🟢" if db_conn else "🔴"
-        db_lat = round((time.time() - start_db) * 1000)
-        if db_conn: db_conn.close()
+        db_healthy, db_lat = db.checkDbHealth()
+        db_ok = "🟢" if db_healthy else "🔴"
 
         # Redis
         start_rd = time.time()
@@ -73,47 +70,59 @@ def getSystemStatus(bot, chatId, msgWaitId):
         bot.edit_message_text("⚠️ Có chút trục trặc", chatId, msgWaitId)
 
 def broadcastToAllUsers(bot, content):
-    try:
-        conn = db.getDbConn(); cur = conn.cursor()
-        cur.execute("SELECT chat_id FROM users")
-        userList = cur.fetchall(); cur.close(); conn.close()
-    except: return 0
+    userList = db.getAllUserIds()
+
+    if not userList:
+        return 0
+
     count = 0
-    for user in userList:
+
+    for chatId in userList:
         try:
-            bot.send_message(user[0], f"📢 <b>THÔNG BÁO MỚI</b>\n\n{content}\n\n<i>Chúc bạn học tốt!</i>", parse_mode="HTML")
+            bot.send_message(chatId, f"📢 <b>THÔNG BÁO MỚI</b>\n\n{content}\n\n<i>Chúc bạn học tốt!</i>", parse_mode="HTML")
             count += 1
             time.sleep(0.3)
-        except: pass
+
+        except Exception as e:
+            utils.log("WARN", f"Không thể gửi broadcast cho user {chatId}: {e}")
+
     return count
 
 def handleToggleNotify(chatId):
     u = db.getUserCredentials(chatId)
-    if not u: return None, "❌ Bạn chưa đăng ký tài khoản."
+    if not u:
+        return None, "❌ Bạn chưa đăng ký tài khoản."
 
     newStatus = not u['notify_enabled']
 
-    db.updateNotifyStatus(chatId, newStatus)
+    if not db.updateNotifyStatus(chatId, newStatus):
+        return None, "❌ Không thể cập nhật trạng thái thông báo. Vui lòng thử lại."
+
     return newStatus, f"✅ Đã <b>{'BẬT' if newStatus else 'TẮT'}</b> nhắc lịch tự động!"
 
 def handleToggleDeadlineNotify(chatId):
     u = db.getUserCredentials(chatId)
-    if not u: return None, "❌ Bạn chưa đăng ký tài khoản."
+    if not u:
+        return None, "❌ Bạn chưa đăng ký tài khoản."
 
     newStatus = not u['notify_deadline']
-    
-    db.updateDeadlineStatus(chatId, newStatus)
+
+    if not db.updateDeadlineStatus(chatId, newStatus):
+        return None, "❌ Không thể cập nhật trạng thái deadline. Vui lòng thử lại."
+
     return newStatus, f"✅ Đã <b>{'BẬT' if newStatus else 'TẮT'}</b> thông báo deadline hằng tuần!"
 
 def getAdminStats(adminId):
     try:
         utils.log("ADMIN", f"Admin {adminId} đang xem thống kê")
-        conn = db.getDbConn(); cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM users")
-        count = cur.fetchone()[0]
-        cur.close(); conn.close()
-        return f"📊 Tổng số người dùng: <b>{count}</b>"
-    except: return "⚠️ Không thể lấy thống kê."
+
+        count = db.countUsers()
+
+        return f"👥 Tổng số người dùng: {count}"
+
+    except Exception as e:
+        utils.log("ERROR", f"Lỗi lấy thống kê hệ thống: {e}")
+        return "⚠️ Không thể lấy thống kê."
 
 
 def handleSendFeedback(bot, message, adminId):

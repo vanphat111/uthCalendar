@@ -83,21 +83,30 @@ def getClassesByDate(chatId, user, password, targetDate):
     except Exception as e:
         utils.log("ERROR", f"Lỗi getClassesByDate: {e}")
         return False, "Lỗi hệ thống không xác định. Vui lòng thử lại sau ít phút."
-
+    
 def verifyAndSaveUser(chatId, mssv, password):
     isValid, reason = verifyUthCredentials(mssv, password)
-    if isValid:
-        conn = db.getDbConn(); cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO users (chat_id, uth_user, uth_pass) VALUES (%s, %s, %s) ON CONFLICT (chat_id) DO UPDATE SET uth_user = EXCLUDED.uth_user, uth_pass = EXCLUDED.uth_pass",
-            (str(chatId), utils.encryptData(mssv), utils.encryptData(password))
-        )
-        conn.commit(); cur.close(); conn.close()
-        utils.log("SUCCESS", f"User {chatId} đã đăng ký thành công")
-        return True, "🎉 <b>Đăng ký thành công!</b> Mình sẽ tự động nhắc lịch cho bạn."
-    
-    utils.log("ERROR", f"User {chatId} đăng ký thất bại: {reason}")
-    return False, f"❌ Thất bại: {reason}"
+
+    if not isValid:
+        utils.log("ERROR", f"User {chatId} đăng ký thất bại: {reason}")
+        return False, f"❌ Thất bại: {reason}"
+
+    encryptedUser = utils.encryptData(mssv)
+    encryptedPassword = utils.encryptData(password)
+
+    saved = db.upsertUserCredentials(
+        chatId,
+        encryptedUser,
+        encryptedPassword
+    )
+
+    if not saved:
+        utils.log("ERROR", f"Không thể lưu tài khoản của user {chatId}")
+        return False, "❌ Xác thực thành công nhưng không thể lưu tài khoản."
+
+    utils.log("SUCCESS", f"User {chatId} đã đăng ký thành công")
+    return True, "🎉 <b>Đăng ký thành công!</b> Mình sẽ tự động nhắc lịch cho bạn."
+
 
 def getValidPortalToken(chatId, rawUser, rawPass):
     cachedToken = redisManager.getSession(chatId, 'portal')
