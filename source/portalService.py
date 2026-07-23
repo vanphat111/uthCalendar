@@ -142,13 +142,7 @@ def formatCalendarMessage(chatId, dateStr, isAuto=False):
             statusLabel = "🛑 Tạm ngưng" if c.get("isTamNgung") else "🟢 Bình thường"
 
             weatherLabel = ""
-            target_cs = None
-            ten_phong = c.get('tenPhong', '')
-            co_so_display = c.get('coSoToDisplay', '')
-            
-            if "CS1" in ten_phong or "Cơ sở 1" in co_so_display: target_cs = "CS1"
-            elif "CS3" in ten_phong or "Cơ sở 3" in co_so_display: target_cs = "CS3"
-            elif "CS2" in ten_phong or "Cơ sở 2" in co_so_display: target_cs = "CS2"
+            target_cs = detectCampus(c)
             
             if target_cs:
                 weatherData = utils.getWeatherByHour(target_cs, c['tuGio'], dateStr)
@@ -210,13 +204,7 @@ def format_week_calendar_message(chat_id, startDateStr):
                 courseLink = c.get('link') or 'https://courses.ut.edu.vn/'
                 
                 # --- Logic xác định cơ sở dựa trên code cũ của mày ---
-                target_cs = "N/A"
-                ten_phong = c.get('tenPhong', '')
-                co_so_display = c.get('coSoToDisplay', '')
-                
-                if "CS1" in ten_phong or "Cơ sở 1" in co_so_display: target_cs = "CS1"
-                elif "CS3" in ten_phong or "Cơ sở 3" in co_so_display: target_cs = "CS3"
-                elif "CS2" in ten_phong or "Cơ sở 2" in co_so_display: target_cs = "CS2"
+                target_cs = detectCampus(c)
                 
                 # Nhúng link vào tên môn và thêm cơ sở ở sau
                 msg += f"   ╰ 📘 <code>{c['tuGio']}</code>: <a href='{courseLink}'>{c['tenMonHoc']}</a> ({target_cs}){status}\n"
@@ -225,3 +213,18 @@ def format_week_calendar_message(chat_id, startDateStr):
     msg += "💡 <i>Dùng 'Lịch hôm nay' để xem chi tiết phòng học và thời tiết bạn nhé!</i>"
     
     return msg
+
+def detectCampus(class_data):
+    ten_phong = str(class_data.get("tenPhong") or "")
+    co_so_display = str(class_data.get("coSoToDisplay") or "")
+
+    combined = f"{ten_phong} {co_so_display}".lower()
+
+    if "cs1" in combined or "cơ sở 1" in combined:
+        return "CS1"
+    if "cs2" in combined or "cơ sở 2" in combined:
+        return "CS2"
+    if "cs3" in combined or "cơ sở 3" in combined:
+        return "CS3"
+
+    return "N/A"
