@@ -225,7 +225,19 @@ def checkPaymentTask(self, chatId, username, orderCode):
             return
             
         elif status in ["CANCELLED", "EXPIRED"]:
-            log("INFO", f"[{current_attempt}/{max_retries}] Đơn hàng {orderCode} đã bị hủy hoặc hết hạn.")
+            status_text = "đã bị hủy" if status == "CANCELLED" else "đã hết hạn"
+
+            log("INFO",
+                f"[{current_attempt}/{max_retries}] "
+                f"Đơn hàng {orderCode} {status_text}.")
+
+            bot.send_message(
+                chatId, (
+                    f"⏰ <b>Không thể tiếp tục thanh toán!</b>\n"
+                    f"Mã QR đơn hàng <code>{orderCode}</code> {status_text}.\n"
+                    f"Vui lòng tạo mã QR mới nếu bạn vẫn muốn ủng hộ."),
+                parse_mode="HTML"
+            )
             return
             
         raise RuntimeWarning("Đơn hàng chưa thanh toán.")
